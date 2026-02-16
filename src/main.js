@@ -3,13 +3,16 @@ import { CONFIG } from './config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, handPhoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh } from './scenes/level.js';
-import { updatePlayer } from './core/player.js'; 
+
+// 👇 CORRECCIÓN: Eliminado 'handPhoneMesh' de los imports
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh } from './scenes/level.js';
+
+import { updatePlayer, debugInfo } from './core/player.js'; 
 import { initUI, ui } from './ui.js';            
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 
-// 1. Inicialización
+// 1. Inicialización del Mundo
 initWorld(); 
 initLights(); 
 initLevel(); 
@@ -28,22 +31,22 @@ let stateTimer = 0;
 let hasKey = false;           
 let batteriesCollected = 0;   
 let tutorialShown = false;    
-let powerOutageCall = false;      // ¿Sonó el teléfono por 2da vez?
-let powerOutageAnswered = false;  // ¿Contestamos ya?
+let powerOutageCall = false;      
+let powerOutageAnswered = false;  
 
-// --- DEBUG VISUAL ---
+// --- DEBUG HUD (Modo Detective) ---
 const debugDiv = document.createElement('div');
-debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.5); padding:10px; pointer-events:none; font-size:12px;";
+debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.7); padding:10px; pointer-events:none; font-size:12px;";
 document.body.appendChild(debugDiv);
 
-// Configuración del Botón Start
+// Botón Start
 const startBtn = document.getElementById('startBtn');
 if(startBtn) {
     startBtn.addEventListener('click', () => { 
         document.getElementById('menu').style.display = 'none'; 
         controls.lock(); 
         
-        // 1. Ojos cerrados al inicio (Pantalla Negra)
+        // 1. Ojos cerrados al inicio
         ui.setWakeOpacity(1); 
         
         gameState = 'WAKING_UP'; 
@@ -64,15 +67,29 @@ function animate() {
     animateRain();
     animateExplosion(delta);
 
-    // --- DEBUG INFO ---
-    const doorLook = getHoveredDoor();
-    const doorName = doorLook ? doorLook.name : "Ninguna";
-    // Muestra distancia a la puerta si estás mirando una
-    const distDoor = doorLook ? camera.position.distanceTo(doorLook.position).toFixed(2) + "m" : "-";
+    // --- MODO DETECTIVE: IDENTIFICAR OBJETOS ---
+    const debugRay = new THREE.Raycaster();
+    debugRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const debugHits = debugRay.intersectObject(scene, true);
     
-    debugDiv.innerText = `Luz: ${ambientLight.intensity.toFixed(2)} | BATERÍAS: ${batteriesCollected}/3 | LLAVE: ${hasKey ? "SÍ" : "NO"}
-    ESTADO: ${gameState}
-    PUERTA: ${doorName} (Dist: ${distDoor})`;
+    let objectName = "---";
+    let parentName = "---";
+    
+    if (debugHits.length > 0) {
+        const obj = debugHits[0].object;
+        objectName = obj.name;
+        if (obj.parent) parentName = obj.parent.name;
+    }
+
+    // Actualizar Debug en pantalla
+    debugDiv.innerHTML = `
+        <span style="color:yellow">OBJETO: ${objectName}</span><br>
+        <span style="color:orange">PADRE: ${parentName}</span><br>
+        <br>
+        Luz: ${ambientLight.intensity.toFixed(2)} | LLAVE: ${hasKey}<br>
+        Estado: ${gameState}<br>
+        Velocidad: ${debugInfo ? debugInfo.speed.toFixed(1) : 0} m/s
+    `;
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
 
@@ -82,26 +99,25 @@ function animate() {
         stateTimer += delta;
         const progress = Math.min(stateTimer / CONFIG.TIMING.WAKE_DURATION, 1.0);
         
-        // Animación de levantarse
         const t = (1 - Math.cos(progress * Math.PI)) / 2; 
         camera.position.lerpVectors(CONFIG.POSITIONS.BED, CONFIG.POSITIONS.SIT, t);
         camera.quaternion.slerp(new THREE.Quaternion().setFromEuler(CONFIG.ROTATIONS.SIT), t);
 
-        // Animación de Parpadeo (Ojos abriéndose)
+        // Parpadeo
         let eyeOpacity = 1.0;
-        if (progress < 0.2) eyeOpacity = 1.0;        // Cerrados
-        else if (progress < 0.3) eyeOpacity = 0.2;   // Abre
-        else if (progress < 0.4) eyeOpacity = 0.8;   // Cierra
-        else if (progress < 0.6) eyeOpacity = 0.1;   // Abre más
-        else if (progress < 0.7) eyeOpacity = 0.4;   // Cierra un poco
-        else eyeOpacity = 1.0 - progress;            // Abre del todo
+        if (progress < 0.2) eyeOpacity = 1.0;        
+        else if (progress < 0.3) eyeOpacity = 0.2;   
+        else if (progress < 0.4) eyeOpacity = 0.8;   
+        else if (progress < 0.6) eyeOpacity = 0.1;   
+        else if (progress < 0.7) eyeOpacity = 0.4;   
+        else eyeOpacity = 1.0 - progress;            
 
         if (progress >= 0.95) eyeOpacity = 0;
         ui.setWakeOpacity(eyeOpacity);
 
         if (progress >= 1.0) { 
             gameState = 'PHONE_RINGING'; 
-            ui.setWakeOpacity(0); // Asegurar ojos abiertos
+            ui.setWakeOpacity(0); 
             ui.showInteract(true); 
             playSound('phone'); 
         }
@@ -110,10 +126,8 @@ function animate() {
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
         if (controls.isLocked || input.keys.flyMode) updatePlayer(delta, input);
         
-        // Efecto de vibración/luz si el teléfono suena
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
-            setPhoneGlowing((Math.sin(Date.now() * 0.01) + 1) * 0.4);
         }
     }
 
@@ -121,8 +135,8 @@ function animate() {
         stateTimer += delta;
         if (stateTimer > CONFIG.TIMING.CALL_DURATION) { 
             ui.showCall(false); 
-            ui.showBlackScreen(true); // Fundido a negro
-            if(handPhoneMesh) handPhoneMesh.visible = false; 
+            ui.showBlackScreen(true); 
+            // Sin handPhoneMesh
             controls.unlock(); 
             gameState = 'TIME_JUMP'; 
             stateTimer = 0;
@@ -150,7 +164,6 @@ function animate() {
         stateTimer += delta;
         const progress = Math.min(stateTimer / CONFIG.TIMING.TRAVEL_DURATION, 1.0);
         
-        // Fade to Black al final del viaje
         if (progress > 0.8) ui.setWakeOpacity((progress - 0.8) * 5); 
 
         const t = progress < .5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
@@ -158,16 +171,14 @@ function animate() {
         camera.quaternion.slerp(new THREE.Quaternion().setFromEuler(CONFIG.ROTATIONS.SPAWN), t);
 
         if (progress >= 1.0) {
-            // LLEGADA A CASA (APAGÓN)
             controls.lock(); 
             gameState = 'GAMEPLAY'; 
             stateTimer = 0;
             
-            // Configurar ambiente oscuro
             ambientLight.intensity = 0.02; 
-            ui.fadeOutWake(3000); // Abrir ojos lentamente
+            ui.fadeOutWake(3000); 
             
-            // Asegurar que el teléfono físico sea visible
+            // Reactivar teléfono de mesa si es necesario
             if (phoneMesh) {
                 phoneMesh.visible = true; 
                 phoneMesh.userData.isRingingAgain = false;
@@ -177,29 +188,25 @@ function animate() {
 
     if (gameState === 'GAMEPLAY') {
         stateTimer += delta;
-        
-        // Tutorial
         if (!tutorialShown && stateTimer > 2.0) {
             ui.showSubtitle("Presiona [ F ] para la Linterna", 4000);
             tutorialShown = true;
         }
-
-        // Trigger Segunda Llamada (A los 6 segundos)
         if (!powerOutageCall && stateTimer > 6.0) {
             playSound('phone'); 
             ui.showSubtitle("📞 El teléfono está sonando de nuevo...", 4000);
             powerOutageCall = true; 
-            if(phoneMesh) phoneMesh.userData.isRingingAgain = true; // Activar flag visual
+            if(phoneMesh) phoneMesh.userData.isRingingAgain = true; 
         }
     }
 
     renderer.render(scene, camera);
 }
 
-// --- SISTEMA DE INTERACCIÓN UNIFICADO ---
+// --- INTERACCIÓN ---
 input.actions.onInteract = () => {
     
-    // CASO 1: PRIMERA LLAMADA (Inicio)
+    // CASO 1: PRIMERA LLAMADA
     if (gameState === 'PHONE_RINGING') {
         if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
             ui.showInteract(false); ui.showCall(true); stopSound('phone'); pickupPhone(); 
@@ -210,18 +217,14 @@ input.actions.onInteract = () => {
 
     if (gameState === 'GAMEPLAY') {
         
-        // CASO 2: SEGUNDA LLAMADA (Apagón)
-        // Verificamos si está sonando Y si estamos cerca
+        // CASO 2: SEGUNDA LLAMADA
         if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
             if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
                 stopSound('phone');
-                phoneMesh.userData.isRingingAgain = false; // Deja de vibrar
-                powerOutageAnswered = true; // Marcamos como contestada
-                
+                phoneMesh.userData.isRingingAgain = false; 
+                powerOutageAnswered = true; 
                 ui.showCall(true);
                 ui.showSubtitle("Novia: '¿Se fue la luz? Revisa los fusibles en el garaje...'", 5000);
-                
-                // Colgar automáticamente
                 setTimeout(() => {
                     ui.showCall(false);
                     ui.showSubtitle("Misión: Buscar LLAVE para abrir el GARAJE", 5000);
@@ -230,7 +233,7 @@ input.actions.onInteract = () => {
             }
         }
 
-        // CASO 3: RECOGER LLAVE 🔑
+        // CASO 3: RECOGER LLAVE
         if (!hasKey && keyMesh && keyMesh.visible && camera.position.distanceTo(keyMesh.position) < 2.5) {
             keyMesh.visible = false; 
             hasKey = true;
@@ -238,53 +241,53 @@ input.actions.onInteract = () => {
             return;
         }
 
-        // CASO 4: INTERACTUAR CON PUERTAS 🚪
+        // CASO 4: INTERACTUAR CON PUERTAS
         const door = getHoveredDoor();
         if (door) {
             const dist = camera.position.distanceTo(door.position);
-            
-            // 🚫 Bloquear interacción si está lejos (> 2.5m)
             if (dist > 2.5) return;
 
-            // 🔒 Lógica de Bloqueo
-            // "Door_08" es la puerta del garaje (según tu indicación anterior)
-            const isLockedDoor = door.name === "Door_08"; 
-            
-            if (isLockedDoor && !door.userData.isOpen && !hasKey) {
-                ui.showSubtitle("🔒 CERRADA. (Necesito llave)", 3000);
-                // playSound('locked');
-                return; 
+            console.log("Intentando abrir:", door.name); // 🔍 DEBUG EN CONSOLA
+
+            // 🛑 BLOQUEO BLINDADO
+            // Si el nombre contiene "Door_008" (o variantes), activamos el bloqueo
+            if (door.name.includes("Door_008") || door.name.includes("Door_08")) {
+                
+                // Si NO tenemos la llave...
+                if (!hasKey) {
+                    // Si la puerta está cerrada (isOpen = false), NO LA ABRAS.
+                    // Si ya estaba abierta (por error antes), permite cerrarla pero no volver a abrirla.
+                    if (!door.userData.isOpen) {
+                        ui.showSubtitle("🔒 CERRADA CON LLAVE", 3000);
+                        // playSound('locked'); 
+                        return; // 🛑 AQUÍ SE DETIENE TODO, NO EJECUTA toggleDoor
+                    }
+                } else {
+                    // Si SI tenemos llave, mostramos mensaje de éxito una vez
+                    if (!door.userData.isOpen) ui.showSubtitle("🔓 Abriendo Garaje...", 2000);
+                }
             }
             
-            // Abrir/Cerrar
+            // Si no retornamos arriba, abrimos la puerta
             toggleDoor(door);
-            
-            if (hasKey && isLockedDoor && !door.userData.isOpen) {
-                ui.showSubtitle("🔓 Puerta abierta", 2000);
-            }
             return;
         }
 
-        // CASO 5: RECOGER BATERÍAS 🔋
+        // CASO 5: BATERÍAS
         if (batteries.length > 0) {
             batteries.forEach((bat) => {
-                // Verificar visibilidad y distancia (< 2.5m)
                 if (bat.visible && !bat.userData.collected && camera.position.distanceTo(bat.position) < 2.5) {
                     bat.visible = false;
                     bat.userData.collected = true;
                     batteriesCollected++;
                     ui.showSubtitle(`🔋 Batería recogida (${batteriesCollected}/3)`, 2000);
-                    
-                    if (batteriesCollected === 3) {
-                        ui.showSubtitle("⚡ Tengo los fusibles. Iré a la caja.", 5000);
-                    }
+                    if (batteriesCollected === 3) ui.showSubtitle("⚡ Tengo los fusibles. Iré a la caja.", 5000);
                 }
             });
         }
     }
 };
 
-// --- HERRAMIENTAS DE DESARROLLO ---
 input.actions.onMakerSpawn = () => {
     controls.unlock();
     const model = prompt("1: Fusibles, 2: Teléfono, 3: Batería, 4: Llave");
@@ -294,22 +297,12 @@ input.actions.onMakerSpawn = () => {
     if (model === "4") spawnModelForEditing('assets/models/llave.glb');
 };
 
-// Controles de Ambiente (Teclas 8, 9, etc)
 input.actions.onFlashlight = () => { if(gameState === 'GAMEPLAY') flashlight.intensity = flashlight.intensity > 0 ? 0 : CONFIG.ENV.FLASHLIGHT_INTENSITY; };
-
-input.actions.onLightUp = () => { 
-    ambientLight.intensity += 0.05; 
-    console.log("💡 Luz:", ambientLight.intensity.toFixed(2)); 
-};
-input.actions.onLightDown = () => { 
-    ambientLight.intensity = Math.max(0, ambientLight.intensity - 0.05); 
-    console.log("💡 Luz:", ambientLight.intensity.toFixed(2)); 
-};
-
+input.actions.onLightUp = () => { ambientLight.intensity += 0.05; };
+input.actions.onLightDown = () => { ambientLight.intensity = Math.max(0, ambientLight.intensity - 0.05); };
 input.actions.onFogUp = () => { scene.fog.density += 0.002; };
 input.actions.onFogDown = () => { scene.fog.density = Math.max(0, scene.fog.density - 0.002); };
 
-function setPhoneGlowing(i) { if(phoneMesh) phoneMesh.children.forEach(c => { if(c.isPointLight) c.intensity = i*2; }); }
 function triggerExplosion() { 
     createExplosionEffect(); let f=0; 
     const i = setInterval(() => { f++; explosionLight.intensity = f%2==0?200:0; if(f>10) { clearInterval(i); explosionLight.intensity=0; gameState='TRAVELING'; stateTimer=0; } }, 80); 

@@ -7,11 +7,13 @@ export const CONFIG = {
         PHONE: new THREE.Vector3(3.73, 4.64, -0.01),
         FUSEBOX: new THREE.Vector3(1.04, 1.58, -11.53),
         
-        // 👇 LISTA DE POSICIONES (Aquí están tus 3 coordenadas)
+        // 👇 POSICIÓN CORREGIDA
+        KEY: new THREE.Vector3(8.93, 1.42, -12.39),
+
         BATTERIES: [
-            new THREE.Vector3(4.51, 2.28, -9.32), // Batería 1
-            new THREE.Vector3(2.78, 5.62, -9.69), // Batería 2
-            new THREE.Vector3(0.59, 0.76, -2.63)  // Batería 3
+            new THREE.Vector3(4.51, 2.28, -9.32),
+            new THREE.Vector3(2.78, 5.62, -9.69),
+            new THREE.Vector3(0.59, 0.76, -2.63)
         ],
 
         VIEW: new THREE.Vector3(-1.85, 11.35, 38.80),
@@ -25,22 +27,21 @@ export const CONFIG = {
         PHONE: new THREE.Euler(1.68, 0.03, 0.64),
         FUSEBOX: new THREE.Euler(0.00, 1.54, 0.00),
         
-        // 👇 LISTA DE ROTACIONES
         BATTERIES: [
-            new THREE.Euler(0.86, 0.51, -2.06),   // Rotación Bat 1
-            new THREE.Euler(-2.16, 0.28, 1.23),   // Rotación Bat 2
-            new THREE.Euler(-1.80, 0.35, 0.56)    // Rotación Bat 3
+            new THREE.Euler(0.86, 0.51, -2.06), 
+            new THREE.Euler(-2.16, 0.28, 1.23), 
+            new THREE.Euler(-1.80, 0.35, 0.56)  
         ]
     },
     SCALES: {
         FUSEBOX: new THREE.Vector3(0.50, 0.65, 0.30),
-        
-        // 👇 LISTA DE ESCALAS (Porque la 1 es diferente a la 2 y 3)
         BATTERIES: [
-            new THREE.Vector3(0.22, 0.23, 0.30), // Escala Bat 1
-            new THREE.Vector3(0.30, 0.30, 0.30), // Escala Bat 2
-            new THREE.Vector3(0.30, 0.30, 0.30)  // Escala Bat 3
-        ]
+            new THREE.Vector3(0.22, 0.23, 0.30),
+            new THREE.Vector3(0.30, 0.30, 0.30),
+            new THREE.Vector3(0.30, 0.30, 0.30)
+        ],
+        // 👇 ESCALA CORREGIDA
+        KEY: new THREE.Vector3(0.0005, 0.0005, 0.0005)
     },
     PLAYER: {
         HEIGHT: 1.7,
@@ -53,7 +54,8 @@ export const CONFIG = {
         AMBIENT_DARK: 0.01,
         AMBIENT_DIM: 0.15,
         AMBIENT_MOON: 0.35,
-        FLASHLIGHT_INTENSITY: 0.55
+        // 👇 Más intensidad para la nueva linterna
+        FLASHLIGHT_INTENSITY: 2.0 
     },
     TIMING: {
         WAKE_DURATION: 4.0, CALL_DURATION: 6.0, EXPLOSION_DELAY: 2.0, TRAVEL_DURATION: 8.0

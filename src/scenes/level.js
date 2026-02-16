@@ -6,9 +6,11 @@ import { CONFIG } from '../config.js';
 export let collidableObjects = [];
 let doors = []; 
 
-// 👇 ELIMINADO: handPhoneMesh de los exports
 export let phoneMesh, fuseboxMesh, keyMesh;
 export let batteries = []; 
+
+// Lista de luces de la casa (para el parpadeo)
+export let houseLights = []; 
 
 const loader = new GLTFLoader();
 
@@ -18,29 +20,60 @@ export function initLevel() {
     loadFuseBox(); 
     loadBatteries(); 
     loadKey(); 
-    // 👇 ELIMINADO: loadHandPhone();
 }
 
 function loadHouse() {
     loader.load('assets/models/House interior.glb', (gltf) => {
         const model = gltf.scene;
         scene.add(model);
+        
         model.traverse((child) => {
             if (child.isMesh) {
+                // Las paredes RECIBEN sombras (de la linterna), pero la casa en sí 
+                // ya no necesita generar tantas sombras si quitamos las de los focos.
                 child.castShadow = true;
                 child.receiveShadow = true;
-                if (child.material) child.material.side = THREE.DoubleSide;
+
+                // Apagar materiales emisivos (TVs verdes, etc.)
+                if (child.material) {
+                    child.material.side = THREE.DoubleSide;
+                    if (child.material.emissive) {
+                        child.material.emissive.setHex(0x000000); 
+                        child.material.emissiveIntensity = 0;    
+                    }
+                }
+
+                // 💡 DETECTAR FOCOS
+                if (child.name.includes("Focus")) {
+                    
+                    // Crear luz puntual (Naranja cálido)
+                    // Distancia 10m, Decay 2
+                    const bulbLight = new THREE.PointLight(0xffaa00, 0, 10); 
+                    
+                    // 🛑 RENDIMIENTO MÁXIMO: SOMBRAS DESACTIVADAS EN LA CASA
+                    // Solo la linterna del jugador generará sombras.
+                    // Esto arregla la caída a 0 FPS.
+                    bulbLight.castShadow = false; 
+                    
+                    child.add(bulbLight);
+                    
+                    // Guardamos referencia para el parpadeo
+                    houseLights.push({ light: bulbLight, mesh: child });
+                }
                 
                 if (child.name.includes("Door") && !child.name.toLowerCase().includes("frame")) {
                     child.userData = { isOpen: false, isDoor: true }; 
                     doors.push(child);
                 }
+                
                 collidableObjects.push(child);
             }
         });
-        console.log("🏠 Casa cargada");
+        console.log(`🏠 Casa cargada. Focos listos (Sin Sombras): ${houseLights.length}`);
     });
 }
+
+// ... (Resto de funciones: loadPhone, loadFuseBox, etc. IGUAL QUE ANTES) ...
 
 function loadPhone() {
     loader.load('assets/models/phone.glb', (gltf) => {
@@ -84,21 +117,18 @@ function loadBatteries() {
             battery.userData = { id: index, type: 'battery', collected: false };
             scene.add(battery);
             batteries.push(battery);
-        }, undefined, (err) => console.error(`❌ Error ${fileName}:`, err));
+        });
     });
 }
 
-// 🔑 CORREGIDO: Llave pequeña y en su sitio
 function loadKey() {
     loader.load('assets/models/llave.glb', (gltf) => {
         keyMesh = gltf.scene;
-        keyMesh.scale.copy(CONFIG.SCALES.KEY); // 0.0005
+        keyMesh.scale.copy(CONFIG.SCALES.KEY); 
         keyMesh.position.copy(CONFIG.POSITIONS.KEY);
         keyMesh.rotation.set(Math.PI/2, 0, 0); 
         scene.add(keyMesh);
-        console.log("🔑 Llave cargada");
-    }, undefined, (err) => {
-        console.warn("⚠️ Error llave:", err);
+    }, undefined, () => {
         const geometry = new THREE.SphereGeometry(0.1, 16, 16);
         const material = new THREE.MeshBasicMaterial({ color: 0xffd700 });
         keyMesh = new THREE.Mesh(geometry, material);
@@ -128,7 +158,6 @@ export function toggleDoor(door) {
 
 export function pickupPhone() {
     if (phoneMesh) phoneMesh.visible = false;
-    // 👇 ELIMINADO: handPhoneMesh
 }
 
 export function spawnModelForEditing(path) {

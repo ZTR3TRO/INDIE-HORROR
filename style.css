@@ -100,3 +100,79 @@ canvas {
 #info.active {
     display: block;
 }
+
+/* 👇 NUEVO: UI DE LA LAPTOP (Sistema Operativo Retro) 👇 */
+#laptopUI {
+    position: fixed;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.7); /* Fondo oscuro para tapar el juego */
+    z-index: 10000;
+    display: flex; justify-content: center; align-items: center;
+    font-family: 'Courier New', Courier, monospace; /* Letra de hacker */
+}
+
+.os-window {
+    background: #c0c0c0; /* Gris Windows 98 */
+    border: 2px solid #fff;
+    border-right-color: #555; border-bottom-color: #555;
+    width: 350px;
+    box-shadow: 10px 10px 20px rgba(0,0,0,0.8);
+}
+
+.os-header {
+    background: #000080; /* Azul clásico */
+    color: white;
+    padding: 5px 10px;
+    display: flex; justify-content: space-between;
+    align-items: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+#closeLaptopBtn {
+    background: #c0c0c0; border: 1px solid #fff; 
+    border-right-color: #555; border-bottom-color: #555;
+    cursor: pointer; font-weight: bold; width: 25px; height: 25px;
+}
+
+#closeLaptopBtn:active {
+    border: 1px solid #555; border-right-color: #fff; border-bottom-color: #fff;
+}
+
+.os-body {
+    padding: 15px;
+    text-align: center;
+    color: black;
+}
+
+#signalDisplay {
+    width: 100%; height: 150px;
+    background: #000;
+    border: 3px inset #888;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+    display: flex; justify-content: center; align-items: center;
+}
+
+/* Magia CSS para hacer ruido estático sin usar imágenes */
+#staticNoise {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: repeating-radial-gradient(#000 0 0.0001%, #fff 0 0.0002%) 50% 0/2500px 2500px, 
+                repeating-conic-gradient(#000 0 0.0001%, #fff 0 0.0002%) 60% 60%/2500px 2500px;
+    background-blend-mode: difference;
+    animation: estatica 0.2s infinite alternate;
+    opacity: 1; /* Esto cambiará con el slider mediante JS */
+    z-index: 2;
+}
+
+@keyframes estatica {
+    100% { background-position: 50% 0, 60% 50%; }
+}
+
+#clearSignal {
+    position: absolute;
+    z-index: 1;
+    opacity: 0; /* Oculto al inicio, se revela con el slider */
+    transition: opacity 0.2s ease;
+}

@@ -7,10 +7,14 @@ import { playSound } from '../core/audio.js';
 export let collidableObjects = [];
 let doors = []; 
 
-export let phoneMesh, fuseboxMesh, keyMesh;
+export let phoneMesh, fuseboxMesh, keyMesh, laptopMesh;
 export let batteries = []; 
 
 export let houseLights = []; 
+
+// 💻 Posición "lógica" de la laptop para cálculos de distancia e interacción
+// Se asigna cuando la laptop carga, separada del mesh group para evitar bugs con GLTF
+export let laptopWorldPosition = new THREE.Vector3();
 
 const loader = new GLTFLoader();
 
@@ -20,6 +24,7 @@ export function initLevel() {
     loadFuseBox(); 
     loadBatteries(); 
     loadKey(); 
+    loadLaptop(); 
 }
 
 function loadHouse() {
@@ -29,8 +34,24 @@ function loadHouse() {
         
         model.traverse((child) => {
             if (child.isMesh) {
+                // 1. ELIMINAR EL LIBRO QUE ESTORBA
+                if (child.name === "Book_02") {
+                    child.visible = false;
+                    child.position.set(0, -100, 0);
+                    return;
+                }
+
+                // 2. APAGAR TELEVISORES
+                const name = child.name.toLowerCase();
+                if (name.includes("tv") || name.includes("television") || name.includes("pantalla")) {
+                    if (child.material) {
+                        child.material.emissive.setHex(0x000000);
+                        child.material.emissiveIntensity = 0;
+                        child.material.color.setHex(0x050505);
+                    }
+                }
+
                 child.castShadow = true;
-                
                 const meshName = child.name.toLowerCase();
                 const isFoliage = meshName.includes("tree") || 
                                   meshName.includes("plant") || 
@@ -42,23 +63,19 @@ function loadHouse() {
 
                 if (child.material) {
                     child.material.side = THREE.DoubleSide;
-                    
                     if (isFoliage) {
-                        // 🌿 Sombra de Vegetación PS1: Recorte limpio y sin auto-sombreado.
-                        // CAMBIO AQUÍ: Bajamos a 0.2 para que las hojas finas no desaparezcan
                         child.material.alphaTest = 0.2; 
-                        child.material.transparent = false; // Fuerza el recorte estilo PS1 y evita artefactos.
-                        child.receiveShadow = false;        // Evita que las hojas se auto-sombreen y se vean oscuras.
-                        child.material.depthWrite = true;   // Forzamos orden correcto de dibujado.
+                        child.material.transparent = false;
+                        child.receiveShadow = false;
+                        child.material.depthWrite = true;
                         child.material.needsUpdate = true;
                     } else {
-                        // 🏠 Sombra de Casa: Limpia y normal.
                         child.receiveShadow = true;
                     }
 
-                    if (child.material.emissive) {
-                        child.material.emissive.setHex(0x000000); 
-                        child.material.emissiveIntensity = 0;    
+                    if (child.material.emissive && !child.name.includes("Focus")) {
+                        child.material.emissive.setHex(0x000000);
+                        child.material.emissiveIntensity = 0;
                     }
 
                     if (child.material.map) {
@@ -69,10 +86,18 @@ function loadHouse() {
 
                 if (child.name.includes("Focus")) {
                     const bulbLight = new THREE.PointLight(0xffaa00, 0, 10); 
-                    bulbLight.castShadow = false; 
                     child.add(bulbLight);
+                    
+                    // 👇 NUEVO: Forzamos que el material del foco empiece totalmente apagado
+                    if (child.material) {
+                        child.material.emissive.setHex(0x000000);
+                        child.material.emissiveIntensity = 0;
+                    }
+
                     houseLights.push({ light: bulbLight, mesh: child });
                 }
+
+
                 
                 if (child.name.includes("Door") && !child.name.toLowerCase().includes("frame")) {
                     child.userData = { isOpen: false, isDoor: true }; 
@@ -82,7 +107,35 @@ function loadHouse() {
                 collidableObjects.push(child);
             }
         });
-        console.log(`🏠 Casa cargada. Focos listos (Sin Sombras): ${houseLights.length}`);
+        console.log("🏠 Casa lista y teles apagadas.");
+    });
+}
+
+function loadLaptop() {
+    loader.load('assets/models/laptop.glb', (gltf) => {
+        laptopMesh = gltf.scene;
+        
+        laptopMesh.position.copy(CONFIG.POSITIONS.LAPTOP);
+        laptopMesh.rotation.copy(CONFIG.ROTATIONS.LAPTOP);
+        laptopMesh.scale.copy(CONFIG.SCALES.LAPTOP);
+        
+        // ✅ FIX 1: Guardamos la posición mundial real en una variable separada.
+        // laptopMesh.position en un Group GLTF a veces no refleja la posición real
+        // de los meshes hijos. Esto garantiza cálculos de distancia correctos.
+        laptopWorldPosition.copy(CONFIG.POSITIONS.LAPTOP);
+
+        // ✅ FIX 2: La laptop tiene su propia luz tenue (pantalla azul).
+        // Así es visible incluso con ambientLight = 0 (apagón).
+        const screenGlow = new THREE.PointLight(0x0044ff, 0.8, 3);
+        screenGlow.position.set(0, 0, 0);
+        laptopMesh.add(screenGlow);
+
+        scene.add(laptopMesh);
+        collidableObjects.push(laptopMesh);
+
+        console.log("💻 Laptop cargada en:", laptopWorldPosition);
+    }, undefined, (err) => {
+        console.error("❌ Error al cargar laptop.glb:", err);
     });
 }
 
@@ -165,12 +218,8 @@ export function toggleDoor(door) {
     const direction = door.userData.isOpen ? -1 : 1;
     door.rotation.y += (Math.PI / 2) * direction;
     door.userData.isOpen = !door.userData.isOpen;
-
-    if (door.userData.isOpen) {
-        playSound('puerta_abierta');
-    } else {
-        playSound('puerta_cerrada');
-    }
+    if (door.userData.isOpen) playSound('puerta_abierta');
+    else playSound('puerta_cerrada');
 }
 
 export function pickupPhone() {

@@ -20,6 +20,15 @@ export const DIALOGUES = {
         { text: "Zare: 'Okey amor, lo haré, hablamos luego.'", duration: 4000, startAt: 20500 }
     ],
 
+    // 👇 NUEVO: Llamada 3 (El escape final)
+    CALL_FINAL: [
+        { text: "Daniel: 'Zare... Zare ¿estás ahí?'", duration: 3000, startAt: 0 },
+        { text: "Zare: '¡Se volvió a ir todo al carajo! La luz murió.'", duration: 3000, startAt: 3000 },
+        { text: "Daniel: 'Sal de ahí YA. Escúchame bien: no estás solo en esa casa.'", duration: 4000, startAt: 6000 },
+        { text: "Zare: '¿De qué diablos hablas? La puerta principal tiene candado.'", duration: 4000, startAt: 10000 },
+        { text: "Daniel: 'Busca las pistas a oscuras. Encuentra el código... ¡Apúrate antes de que te atrape!'", duration: 5000, startAt: 14000 }
+    ],
+
     // Frases sueltas para el sistema de paranoia
     PARANOIA_TOCANDO: [
         "Zare: '¿Qué fue eso...?'",
@@ -34,6 +43,7 @@ export const DIALOGUES = {
         "Zare: 'Solo es el viento... espero.'"
     ]
 };
+
 
 // --- REPRODUCTOR DE DIÁLOGOS ---
 // Esta función lee el guion y muestra los subtítulos automáticamente

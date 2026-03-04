@@ -3,18 +3,21 @@ import { CONFIG } from './config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights } from './scenes/level.js';
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, laptopMesh, laptopWorldPosition } from './scenes/level.js';
 import { updatePlayer, debugInfo } from './core/player.js'; 
 import { initUI, ui } from './ui.js';            
+import { initLaptop, toggleLaptopUI } from './laptopUI.js'; 
+import { initNumpad, toggleNumpadUI } from './numpadUI.js'; 
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
-// 👇 NUEVO: Importamos el Gestor de Diálogos
 import { DIALOGUES, playDialogueSequence } from './dialogues.js';
 
 initWorld(); 
 initLights(); 
 initLevel(); 
 initUI(); 
+initLaptop(); 
+initNumpad(); 
 initAudio(); 
 createRain(); 
 
@@ -31,6 +34,11 @@ let tutorialShown = false;
 let powerOutageCall = false;      
 let powerOutageAnswered = false;  
 let powerRestored = false;
+let isLaptopOpen = false;
+let isNumpadOpen = false; // Preparado para cuando conectemos la puerta final
+
+let finalCallTriggered = false;
+let finalCallAnswered = false;
 
 const debugDiv = document.createElement('div');
 debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.7); padding:10px; pointer-events:none; font-size:12px;";
@@ -49,18 +57,19 @@ if(startBtn) {
 }
 
 renderer.domElement.addEventListener('click', () => {
-    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked) controls.lock();
+    // Evitamos bloquear la cámara si alguna interfaz está abierta
+    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen) controls.lock();
 });
 
-function checkLineOfSight(targetObject) {
-    if (!targetObject) return false;
+function checkLineOfSight(targetPosition) {
+    if (!targetPosition) return false;
     const ray = new THREE.Raycaster();
-    const direction = new THREE.Vector3().subVectors(targetObject.position, camera.position).normalize();
+    const direction = new THREE.Vector3().subVectors(targetPosition, camera.position).normalize();
     ray.set(camera.position, direction);
-    const distanceToObject = camera.position.distanceTo(targetObject.position);
+    const distanceToTarget = camera.position.distanceTo(targetPosition);
     const hits = ray.intersectObjects(collidableObjects, true);
     if (hits.length > 0) {
-        if (hits[0].distance < distanceToObject && hits[0].object !== targetObject) return false;
+        if (hits[0].distance < distanceToTarget - 0.3) return false;
     }
     return true;
 }
@@ -78,12 +87,14 @@ function animate() {
     let objectName = "---";
     if (debugHits.length > 0) objectName = debugHits[0].object.name;
 
-    debugDiv.innerHTML = `OBJETO: ${objectName}<br>LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>FOCOS: ${houseLights.length}<br>Estado: ${gameState}`;
+    const distToLaptop = laptopWorldPosition.lengthSq() > 0 
+        ? camera.position.distanceTo(laptopWorldPosition).toFixed(2) 
+        : '?';
+    debugDiv.innerHTML = `OBJETO: ${objectName}<br>LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>FOCOS: ${houseLights.length}<br>Estado: ${gameState}<br>DIST LAPTOP: ${distToLaptop}`;
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
 
     // --- MÁQUINA DE ESTADOS ---
-
     if (gameState === 'WAKING_UP') {
         stateTimer += delta;
         const progress = Math.min(stateTimer / CONFIG.TIMING.WAKE_DURATION, 1.0);
@@ -105,7 +116,7 @@ function animate() {
     }
 
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
-        if (controls.isLocked || input.keys.flyMode) updatePlayer(delta, input);
+        if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
         }
@@ -156,7 +167,6 @@ function animate() {
         stateTimer += delta;
         paranoiaTimer += delta;
 
-        // 👻 PARANOIA CON GESTOR DE DIÁLOGOS
         if (paranoiaTimer > 15) { 
             if (Math.random() < 0.3) { 
                 const esTocando = Math.random() > 0.5;
@@ -186,7 +196,7 @@ function animate() {
 // --- INTERACCIÓN ---
 input.actions.onInteract = () => {
     
-    // 📞 1. PRIMERA LLAMADA (Cinemática)
+    // 📞 1. PRIMERA LLAMADA
     if (gameState === 'PHONE_RINGING') {
         if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
             ui.showInteract(false); 
@@ -197,9 +207,7 @@ input.actions.onInteract = () => {
             gameState = 'IN_CALL'; 
             stateTimer = 0;
 
-            // 👇 USAMOS EL GESTOR DE DIÁLOGOS
             playDialogueSequence(ui, DIALOGUES.CALL_1, () => {
-                // Esto se ejecuta automáticamente cuando termina el diálogo
                 ui.showCall(false); 
                 ui.showBlackScreen(true); 
                 controls.unlock(); 
@@ -213,14 +221,35 @@ input.actions.onInteract = () => {
 
     if (gameState === 'GAMEPLAY') {
         
-        // 📞 2. SEGUNDA LLAMADA (Gameplay)
-        if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
+        // 💻 INTERACCIÓN CON LAPTOP
+        if (laptopMesh && laptopWorldPosition.lengthSq() > 0) {
+            const distToLaptop = camera.position.distanceTo(laptopWorldPosition);
+            if (distToLaptop < 1.5) { 
+                if (!isLaptopOpen) {
+                    isLaptopOpen = true;
+                    controls.unlock();
+                    toggleLaptopUI(true); 
+                    
+                    const exitBtn = document.getElementById('exitLaptopBtn');
+                    if(exitBtn) {
+                        exitBtn.onclick = () => {
+                            toggleLaptopUI(false);
+                            isLaptopOpen = false;
+                            controls.lock();
+                        };
+                    }
+                }
+                return;
+            }
+        }
+
+        // 📞 2. SEGUNDA LLAMADA
+        if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain && !finalCallTriggered) {
             stopSound('telefono');
             phoneMesh.userData.isRingingAgain = false; 
             powerOutageAnswered = true; 
             ui.showCall(true);
 
-            // 👇 USAMOS EL GESTOR DE DIÁLOGOS
             playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
                 ui.showCall(false);
                 ui.showSubtitle("Misión: Buscar LLAVE para abrir el GARAJE", 6000);
@@ -229,18 +258,33 @@ input.actions.onInteract = () => {
             return;
         }
 
+        // 📞 3. TERCERA LLAMADA
+        if (finalCallTriggered && !finalCallAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
+            stopSound('telefono');
+            phoneMesh.userData.isRingingAgain = false; 
+            finalCallAnswered = true; 
+            ui.showCall(true);
+
+            playDialogueSequence(ui, DIALOGUES.CALL_FINAL, () => {
+                ui.showCall(false);
+                ui.showSubtitle("Misión: Encuentra el CÓDIGO de 4 dígitos para escapar", 6000);
+            });
+            
+            return;
+        }
+
         // 3. RECOGER LLAVE
         if (!hasKey && keyMesh && keyMesh.visible) {
-             if (camera.position.distanceTo(keyMesh.position) < 2.5 && checkLineOfSight(keyMesh)) {
-                 keyMesh.visible = false; hasKey = true; 
-                 playSound('objeto'); 
-                 ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
-                 return;
-             }
+            if (camera.position.distanceTo(keyMesh.position) < 2.5 && checkLineOfSight(keyMesh.position)) {
+                keyMesh.visible = false; hasKey = true; 
+                playSound('objeto'); 
+                ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
+                return;
+            }
         }
 
         // 4. CAJA DE FUSIBLES
-        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5 && checkLineOfSight(fuseboxMesh)) {
+        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5 && checkLineOfSight(CONFIG.POSITIONS.FUSEBOX)) {
             if (batteriesCollected === 3) {
                 if (!powerRestored) {
                     powerRestored = true;
@@ -280,10 +324,18 @@ input.actions.onInteract = () => {
                             if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
                         });
                         ambientLight.intensity = 0;
-                        flashlight.intensity = 0;
                         
                         stopSound('zumbido_electrico'); 
-                        ui.showSubtitle("💀 El sistema colapsó por completo...", 6000);
+                        ui.showSubtitle("💀 El sistema colapsó por completo...", 5000);
+
+                        setTimeout(() => {
+                            playSound('telefono');
+                            finalCallTriggered = true;
+                            if(phoneMesh) {
+                                phoneMesh.userData.isRingingAgain = true; 
+                            }
+                        }, 5000);
+
                     }, 15000); 
                 }
             } else {
@@ -306,8 +358,6 @@ input.actions.onInteract = () => {
                     return; 
                 }
                 else { 
-                    ui.triggerScreamerEffect(); 
-                    playSound('jumpscare'); 
                     ui.showSubtitle("🔓 Abriendo...", 2000); 
                 }
             }
@@ -317,7 +367,7 @@ input.actions.onInteract = () => {
         // 6. BATERÍAS
         if (batteries.length > 0) {
             batteries.forEach((bat) => {
-                if (bat.visible && !bat.userData.collected && camera.position.distanceTo(bat.position) < 2.5 && checkLineOfSight(bat)) {
+                if (bat.visible && !bat.userData.collected && camera.position.distanceTo(bat.position) < 2.5 && checkLineOfSight(bat.position)) {
                     bat.visible = false; bat.userData.collected = true; batteriesCollected++;
                     playSound('objeto'); 
                     ui.showSubtitle(`🔋 Fusible recogido (${batteriesCollected}/3)`, 2000);
@@ -330,11 +380,12 @@ input.actions.onInteract = () => {
 
 input.actions.onMakerSpawn = () => {
     controls.unlock();
-    const model = prompt("1: Fusibles, 2: Teléfono, 3: Batería, 4: Llave");
+    const model = prompt("1: Fusibles, 2: Teléfono, 3: Batería, 4: Llave, 5: Laptop");
     if (model === "1") spawnModelForEditing('assets/models/caja_fusibles.glb');
     if (model === "2") spawnModelForEditing('assets/models/phone.glb');
     if (model === "3") spawnModelForEditing('assets/models/bateria_1.glb');
     if (model === "4") spawnModelForEditing('assets/models/llave.glb');
+    if (model === "5") spawnModelForEditing('assets/models/laptop.glb'); 
 };
 
 input.actions.onFlashlight = () => { if(gameState === 'GAMEPLAY') flashlight.intensity = flashlight.intensity > 0 ? 0 : CONFIG.ENV.FLASHLIGHT_INTENSITY; };
@@ -346,6 +397,25 @@ input.actions.onFogDown = () => { scene.fog.density = Math.max(0, scene.fog.dens
 function triggerExplosion() { 
     createExplosionEffect(); let f=0; 
     const i = setInterval(() => { f++; explosionLight.intensity = f%2==0?200:0; if(f>10) { clearInterval(i); explosionLight.intensity=0; gameState='TRAVELING'; stateTimer=0; } }, 80); 
-}
+};
+
+// --- CERRAR INTERFACES CON LA TECLA ESC ---
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'q') {
+        if (isLaptopOpen) {
+            toggleLaptopUI(false);
+            isLaptopOpen = false;
+            // Retrasamos un milisegundo el lock para que no se pelee con el ESC nativo del navegador
+            setTimeout(() => { controls.lock(); }, 10); 
+        }
+        
+        if (isNumpadOpen) {
+            toggleNumpadUI(false);
+            isNumpadOpen = false;
+            setTimeout(() => { controls.lock(); }, 10);
+        }
+    }
+});
+
 
 animate();

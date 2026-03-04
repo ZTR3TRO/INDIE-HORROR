@@ -6,9 +6,8 @@ export const CONFIG = {
         SIT: new THREE.Vector3(4.75, 5.33, -0.57),
         PHONE: new THREE.Vector3(3.73, 4.64, -0.01),
         FUSEBOX: new THREE.Vector3(1.04, 1.58, -11.53),
-        
-        // 👇 POSICIÓN CORREGIDA
         KEY: new THREE.Vector3(8.93, 1.42, -12.39),
+        LAPTOP: new THREE.Vector3(3.91, 4.61, -3.75),
 
         BATTERIES: [
             new THREE.Vector3(4.51, 2.28, -9.32),
@@ -26,6 +25,7 @@ export const CONFIG = {
         SPAWN: new THREE.Euler(0, -2.0, 0),
         PHONE: new THREE.Euler(1.68, 0.03, 0.64),
         FUSEBOX: new THREE.Euler(0.00, 1.54, 0.00),
+        LAPTOP: new THREE.Euler(0.00, 1.56, 0.00),
         
         BATTERIES: [
             new THREE.Euler(0.86, 0.51, -2.06), 
@@ -35,13 +35,13 @@ export const CONFIG = {
     },
     SCALES: {
         FUSEBOX: new THREE.Vector3(0.50, 0.65, 0.30),
+        KEY: new THREE.Vector3(0.0005, 0.0005, 0.0005),
+        LAPTOP: new THREE.Vector3(0.19, 0.21, 0.21),
         BATTERIES: [
             new THREE.Vector3(0.22, 0.23, 0.30),
             new THREE.Vector3(0.30, 0.30, 0.30),
             new THREE.Vector3(0.30, 0.30, 0.30)
-        ],
-        // 👇 ESCALA CORREGIDA
-        KEY: new THREE.Vector3(0.0005, 0.0005, 0.0005)
+        ]
     },
     PLAYER: {
         HEIGHT: 1.7,
@@ -54,7 +54,6 @@ export const CONFIG = {
         AMBIENT_DARK: 0.01,
         AMBIENT_DIM: 0.15,
         AMBIENT_MOON: 0.35,
-        // 👇 Más intensidad para la nueva linterna
         FLASHLIGHT_INTENSITY: 2.0 
     },
     TIMING: {

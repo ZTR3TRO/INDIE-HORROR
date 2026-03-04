@@ -21,8 +21,6 @@ export const ui = {
         // 4. EL SCREAMER (Imagen de Susto) 👻
         const screamer = document.createElement('div');
         screamer.id = 'screamer-face';
-        // Configurado para buscar la imagen en tu carpeta local
-        // Asegúrate de que la imagen exista en: public/assets/images/screamer.png
         screamer.style.cssText = `
             position: fixed; 
             top: 0; 
@@ -36,6 +34,34 @@ export const ui = {
             z-index: 10000; 
         `; 
         document.body.appendChild(screamer);
+
+        // --- 5. LÓGICA DEL MINI-JUEGO DE LA LAPTOP 💻 ---
+        const slider = document.getElementById('signalSlider');
+        const staticNoise = document.getElementById('staticNoise');
+        const clearSignal = document.getElementById('clearSignal');
+        const closeBtn = document.getElementById('closeLaptopBtn');
+        
+        const TARGET_FREQ = 68; // El número exacto donde la señal es perfecta
+
+        if (slider) {
+            slider.addEventListener('input', (e) => {
+                const value = parseInt(e.target.value);
+                const distance = Math.abs(value - TARGET_FREQ);
+                
+                // Opacidad de la estática basada en qué tan lejos estamos del 68
+                let staticOpacity = distance / 15; 
+                if (staticOpacity > 1) staticOpacity = 1;
+
+                if (staticNoise) staticNoise.style.opacity = staticOpacity;
+                if (clearSignal) clearSignal.style.opacity = 1 - staticOpacity;
+            });
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                ui.showLaptop(false);
+            });
+        }
     },
 
     // --- Control de Ojos ---
@@ -100,18 +126,30 @@ export const ui = {
         }
     },
 
+    // --- NUEVA UI: MOSTRAR/OCULTAR LAPTOP ---
+    showLaptop: (show) => {
+        const laptopUI = document.getElementById('laptopUI');
+        if (!laptopUI) return;
+
+        if (show) {
+            laptopUI.style.display = 'flex';
+            // Liberamos el cursor para que el jugador pueda usar el mouse en el slider
+            document.exitPointerLock(); 
+        } else {
+            laptopUI.style.display = 'none';
+            // Al cerrar, volvemos a bloquear el cursor para seguir jugando
+            document.body.requestPointerLock();
+        }
+    },
+
     // --- EFECTO SCREAMER ---
     triggerScreamerEffect: () => {
         const el = document.getElementById('screamer-face');
         if(el) {
-            // 1. Aparece de golpe
             el.style.opacity = 1; 
-            
-            // 2. Efecto de "Zoom violento" hacia la cara
             el.style.transition = "transform 0.1s";
             el.style.transform = "scale(1.2)";
 
-            // 3. Desaparece rápido (400ms)
             setTimeout(() => {
                 el.style.opacity = 0;
                 el.style.transform = "scale(1.0)";

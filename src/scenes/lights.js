@@ -16,15 +16,34 @@ export function initLights() {
     explosionLight.position.copy(CONFIG.POSITIONS.EXPLOSION);
     scene.add(explosionLight);
     
-    // 3. Linterna (MEJORADA 👻)
-    // angle: Math.PI/9 (más cerrado), penumbra: 0.5 (bordes suaves)
-    flashlight = new THREE.SpotLight(0xffffff, 0, 40, Math.PI/9, 0.5);
+    // 3. Linterna ESTILO PS1/PS2 🔦
+    // Aumentamos la distancia de la luz a 50 para que ilumine el patio profundo.
+    // penumbra: 0.15 -> Suaviza microscópicamente el borde para evitar bugs de renderizado, 
+    // pero sigue manteniendo un aspecto de linterna dura y retro.
+    flashlight = new THREE.SpotLight(0xffffff, 0, 50, Math.PI/7, 0.15);
     
     // Ajuste de posición relativo a la cámara
-    flashlight.position.set(0.2, -0.2, 0); 
+    flashlight.position.set(0.3, -0.3, 0); 
     flashlight.target.position.set(0, 0, -10);
     
-    flashlight.castShadow = true; // Sombras activadas
+    // Activamos las sombras
+    flashlight.castShadow = true; 
+    
+    // --- 🛑 OPTIMIZACIÓN DE SOMBRAS (Magia para los FPS) ---
+    // Mantenemos la resolución baja (256x256) para el toque PS1 y buen rendimiento.
+    flashlight.shadow.mapSize.width = 256; 
+    flashlight.shadow.mapSize.height = 256; 
+    
+    // Limitamos hasta dónde calcula las sombras
+    flashlight.shadow.camera.near = 0.5;
+    
+    // 🛑 AQUÍ ESTABA EL BUG: 
+    // Subimos el "far" a 50 para que empate con la distancia de la luz.
+    // Antes la sombra se cortaba en 25 y creaba esa "pared negra".
+    flashlight.shadow.camera.far = 50;
+    
+    // Evita rayas raras en superficies planas
+    flashlight.shadow.bias = -0.001; 
     
     camera.add(flashlight);
     camera.add(flashlight.target);

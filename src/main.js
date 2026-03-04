@@ -8,6 +8,8 @@ import { updatePlayer, debugInfo } from './core/player.js';
 import { initUI, ui } from './ui.js';            
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
+// 👇 NUEVO: Importamos el Gestor de Diálogos
+import { DIALOGUES, playDialogueSequence } from './dialogues.js';
 
 initWorld(); 
 initLights(); 
@@ -21,6 +23,7 @@ const clock = new THREE.Clock();
 
 let gameState = 'START';
 let stateTimer = 0;
+let paranoiaTimer = 0; 
 
 let hasKey = false;           
 let batteriesCollected = 0;   
@@ -41,7 +44,7 @@ if(startBtn) {
         ui.setWakeOpacity(1); 
         gameState = 'WAKING_UP'; 
         stateTimer = 0; 
-        playSound('rain');
+        playSound('lluvia'); 
     });
 }
 
@@ -49,7 +52,6 @@ renderer.domElement.addEventListener('click', () => {
     if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked) controls.lock();
 });
 
-// Función Anti-Paredes
 function checkLineOfSight(targetObject) {
     if (!targetObject) return false;
     const ray = new THREE.Raycaster();
@@ -58,9 +60,7 @@ function checkLineOfSight(targetObject) {
     const distanceToObject = camera.position.distanceTo(targetObject.position);
     const hits = ray.intersectObjects(collidableObjects, true);
     if (hits.length > 0) {
-        if (hits[0].distance < distanceToObject && hits[0].object !== targetObject) {
-            return false;
-        }
+        if (hits[0].distance < distanceToObject && hits[0].object !== targetObject) return false;
     }
     return true;
 }
@@ -72,7 +72,6 @@ function animate() {
     animateRain();
     animateExplosion(delta);
 
-    // Debug
     const debugRay = new THREE.Raycaster();
     debugRay.setFromCamera(new THREE.Vector2(0, 0), camera);
     const debugHits = debugRay.intersectObject(scene, true);
@@ -82,6 +81,8 @@ function animate() {
     debugDiv.innerHTML = `OBJETO: ${objectName}<br>LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>FOCOS: ${houseLights.length}<br>Estado: ${gameState}`;
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
+
+    // --- MÁQUINA DE ESTADOS ---
 
     if (gameState === 'WAKING_UP') {
         stateTimer += delta;
@@ -100,7 +101,7 @@ function animate() {
 
         if (progress >= 0.95) eyeOpacity = 0;
         ui.setWakeOpacity(eyeOpacity);
-        if (progress >= 1.0) { gameState = 'PHONE_RINGING'; ui.setWakeOpacity(0); ui.showInteract(true); playSound('phone'); }
+        if (progress >= 1.0) { gameState = 'PHONE_RINGING'; ui.setWakeOpacity(0); ui.showInteract(true); playSound('telefono'); }
     }
 
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
@@ -110,19 +111,25 @@ function animate() {
         }
     }
 
-    if (gameState === 'IN_CALL') {
-        stateTimer += delta;
-        if (stateTimer > CONFIG.TIMING.CALL_DURATION) { ui.showCall(false); ui.showBlackScreen(true); controls.unlock(); gameState = 'TIME_JUMP'; stateTimer = 0; }
-    }
-
     if (gameState === 'TIME_JUMP') {
         stateTimer += delta;
-        if (stateTimer > 4.0) { ui.showBlackScreen(false); camera.position.copy(CONFIG.POSITIONS.VIEW); if(CONFIG.ROTATIONS.VIEW) camera.rotation.copy(CONFIG.ROTATIONS.VIEW); gameState = 'PRE_EXPLOSION'; stateTimer = 0; ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM; }
+        if (stateTimer > 4.0) { 
+            ui.showBlackScreen(false); 
+            camera.position.copy(CONFIG.POSITIONS.VIEW); 
+            if(CONFIG.ROTATIONS.VIEW) camera.rotation.copy(CONFIG.ROTATIONS.VIEW); 
+            gameState = 'PRE_EXPLOSION'; 
+            stateTimer = 0; 
+            ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM; 
+        }
     }
 
     if (gameState === 'PRE_EXPLOSION') {
         stateTimer += delta;
-        if (stateTimer > CONFIG.TIMING.EXPLOSION_DELAY) { gameState = 'EXPLODING'; triggerExplosion(); }
+        if (stateTimer > CONFIG.TIMING.EXPLOSION_DELAY) { 
+            gameState = 'EXPLODING'; 
+            playSound('explosion'); 
+            triggerExplosion(); 
+        }
     }
 
     if (gameState === 'TRAVELING') {
@@ -139,16 +146,35 @@ function animate() {
             stateTimer = 0;
             ambientLight.intensity = 0.0; 
             ui.fadeOutWake(3000);
+            playSound('respiracion'); 
+            playSound('tinitus');     
             if (phoneMesh) phoneMesh.userData.isRingingAgain = false;
         }
     }
 
     if (gameState === 'GAMEPLAY') {
         stateTimer += delta;
+        paranoiaTimer += delta;
+
+        // 👻 PARANOIA CON GESTOR DE DIÁLOGOS
+        if (paranoiaTimer > 15) { 
+            if (Math.random() < 0.3) { 
+                const esTocando = Math.random() > 0.5;
+                if (esTocando) playSound('tocando');
+                else playSound('puerta_scream');
+                
+                const frases = esTocando ? DIALOGUES.PARANOIA_TOCANDO : DIALOGUES.PARANOIA_PUERTA;
+                const fraseElegida = frases[Math.floor(Math.random() * frases.length)];
+                
+                setTimeout(() => { ui.showSubtitle(fraseElegida, 3000); }, 800);
+            }
+            paranoiaTimer = 0; 
+        }
+
         if (!tutorialShown && stateTimer > 2.0) { ui.showSubtitle("Presiona [ F ] para la Linterna", 4000); tutorialShown = true; }
+        
         if (!powerOutageCall && !powerRestored && stateTimer > 6.0) { 
-            playSound('phone'); 
-            ui.showSubtitle("📞 El teléfono está sonando de nuevo...", 4000);
+            playSound('telefono'); 
             powerOutageCall = true; 
             if(phoneMesh) phoneMesh.userData.isRingingAgain = true; 
         }
@@ -160,116 +186,142 @@ function animate() {
 // --- INTERACCIÓN ---
 input.actions.onInteract = () => {
     
+    // 📞 1. PRIMERA LLAMADA (Cinemática)
     if (gameState === 'PHONE_RINGING') {
         if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
-            ui.showInteract(false); ui.showCall(true); stopSound('phone'); pickupPhone(); gameState = 'IN_CALL'; stateTimer = 0;
+            ui.showInteract(false); 
+            ui.showCall(true); 
+            stopSound('telefono'); 
+            stopSound('pasos'); 
+            pickupPhone(); 
+            gameState = 'IN_CALL'; 
+            stateTimer = 0;
+
+            // 👇 USAMOS EL GESTOR DE DIÁLOGOS
+            playDialogueSequence(ui, DIALOGUES.CALL_1, () => {
+                // Esto se ejecuta automáticamente cuando termina el diálogo
+                ui.showCall(false); 
+                ui.showBlackScreen(true); 
+                controls.unlock(); 
+                gameState = 'TIME_JUMP'; 
+                stateTimer = 0; 
+                stopSound('pasos');
+            });
         }
         return;
     }
 
     if (gameState === 'GAMEPLAY') {
         
+        // 📞 2. SEGUNDA LLAMADA (Gameplay)
         if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
-            if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
-                stopSound('phone');
-                phoneMesh.userData.isRingingAgain = false; 
-                powerOutageAnswered = true; 
-                ui.showCall(true);
-                ui.showSubtitle("Novia: '¿Se fue la luz? Revisa los fusibles en el garaje...'", 5000);
-                setTimeout(() => {
-                    ui.showCall(false);
-                    ui.showSubtitle("Misión: Buscar LLAVE para abrir el GARAJE", 5000);
-                }, 5000);
-                return;
-            }
+            stopSound('telefono');
+            phoneMesh.userData.isRingingAgain = false; 
+            powerOutageAnswered = true; 
+            ui.showCall(true);
+
+            // 👇 USAMOS EL GESTOR DE DIÁLOGOS
+            playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
+                ui.showCall(false);
+                ui.showSubtitle("Misión: Buscar LLAVE para abrir el GARAJE", 6000);
+            });
+            
+            return;
         }
 
+        // 3. RECOGER LLAVE
         if (!hasKey && keyMesh && keyMesh.visible) {
-             if (camera.position.distanceTo(keyMesh.position) < 2.5) {
-                 if (checkLineOfSight(keyMesh)) {
-                     keyMesh.visible = false; hasKey = true; ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); return;
-                 }
+             if (camera.position.distanceTo(keyMesh.position) < 2.5 && checkLineOfSight(keyMesh)) {
+                 keyMesh.visible = false; hasKey = true; 
+                 playSound('objeto'); 
+                 ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
+                 return;
              }
         }
 
-        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5) {
-            if (checkLineOfSight(fuseboxMesh)) {
-                if (batteriesCollected === 3) {
-                    if (!powerRestored) {
-                        powerRestored = true;
-                        ui.showSubtitle("⚡ SISTEMA REINICIADO", 3000);
-                        
-                        // Encender las luces (SIN SOMBRAS, SUPER RÁPIDO)
+        // 4. CAJA DE FUSIBLES
+        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5 && checkLineOfSight(fuseboxMesh)) {
+            if (batteriesCollected === 3) {
+                if (!powerRestored) {
+                    powerRestored = true;
+                    ui.showSubtitle("⚡ SISTEMA REINICIADO", 3000);
+                    playSound('zumbido_electrico'); 
+
+                    houseLights.forEach(item => {
+                        item.light.intensity = 1.5; 
+                        if(item.mesh.material) {
+                            item.mesh.material.emissive.setHex(0xffaa00);
+                            item.mesh.material.emissiveIntensity = 1;
+                        }
+                    });
+                    ambientLight.intensity = 0.05;
+
+                    const blackoutLoop = setInterval(() => {
                         houseLights.forEach(item => {
-                            item.light.intensity = 1.5; 
-                            if(item.mesh.material) {
-                                item.mesh.material.emissive.setHex(0xffaa00);
-                                item.mesh.material.emissiveIntensity = 1;
-                            }
-                        });
-                        ambientLight.intensity = 0.05;
-
-                        // Ciclo de parpadeo (Ahora no mata el PC)
-                        const blackoutLoop = setInterval(() => {
-                            houseLights.forEach(item => {
-                                if (Math.random() > 0.5) {
-                                    item.light.intensity = Math.random() * 2; 
-                                    if(item.mesh.material) item.mesh.material.emissiveIntensity = 1;
-                                } else {
-                                    item.light.intensity = 0;
-                                    if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
-                                }
-                            });
-                            
-                            if (Math.random() > 0.8) {
-                                houseLights.forEach(item => { item.light.intensity = 0; });
-                            }
-                        }, 100); 
-
-                        // Colapso final
-                        setTimeout(() => {
-                            clearInterval(blackoutLoop); 
-                            powerRestored = false; 
-                            
-                            houseLights.forEach(item => {
+                            if (Math.random() > 0.5) {
+                                item.light.intensity = Math.random() * 2; 
+                                if(item.mesh.material) item.mesh.material.emissiveIntensity = 1;
+                            } else {
                                 item.light.intensity = 0;
                                 if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
-                            });
-                            ambientLight.intensity = 0;
-                            flashlight.intensity = 0;
-                            
-                            ui.showSubtitle("💀 El sistema colapsó por completo...", 6000);
-                        }, 15000); 
-                    }
-                } else {
-                    ui.showSubtitle(`⚠️ FALTAN FUSIBLES (${batteriesCollected}/3)`, 3000);
+                            }
+                        });
+                        
+                        if (Math.random() > 0.7) playSound('chispazo'); 
+                        if (Math.random() > 0.8) houseLights.forEach(item => { item.light.intensity = 0; });
+                    }, 100); 
+
+                    setTimeout(() => {
+                        clearInterval(blackoutLoop); 
+                        powerRestored = false; 
+                        
+                        houseLights.forEach(item => {
+                            item.light.intensity = 0;
+                            if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
+                        });
+                        ambientLight.intensity = 0;
+                        flashlight.intensity = 0;
+                        
+                        stopSound('zumbido_electrico'); 
+                        ui.showSubtitle("💀 El sistema colapsó por completo...", 6000);
+                    }, 15000); 
                 }
+            } else {
+                ui.showSubtitle(`⚠️ FALTAN FUSIBLES (${batteriesCollected}/3)`, 3000);
             }
             return;
         }
 
+        // 5. PUERTAS
         const door = getHoveredDoor();
         if (door) {
             const dist = camera.position.distanceTo(door.position);
             if (dist > 2.5) return;
             const isLockedDoor = door.name.includes("Door_008") || door.name.includes("Door_08"); 
+            
             if (isLockedDoor && !door.userData.isOpen) {
-                if (!hasKey) { ui.showSubtitle("🔒 CERRADA. (Necesito llave)", 3000); return; }
-                else { ui.triggerScreamerEffect(); ui.showSubtitle("🔓 Abriendo...", 2000); }
+                if (!hasKey) { 
+                    playSound('puerta_bloqueda'); 
+                    ui.showSubtitle("Zare: 'Está cerrada... necesito la llave.'", 3000); 
+                    return; 
+                }
+                else { 
+                    ui.triggerScreamerEffect(); 
+                    playSound('jumpscare'); 
+                    ui.showSubtitle("🔓 Abriendo...", 2000); 
+                }
             }
             toggleDoor(door); return;
         }
 
+        // 6. BATERÍAS
         if (batteries.length > 0) {
             batteries.forEach((bat) => {
-                if (bat.visible && !bat.userData.collected) {
-                    if (camera.position.distanceTo(bat.position) < 2.5) {
-                        if (checkLineOfSight(bat)) {
-                            bat.visible = false; bat.userData.collected = true; batteriesCollected++;
-                            ui.showSubtitle(`🔋 Batería recogida (${batteriesCollected}/3)`, 2000);
-                            if (batteriesCollected === 3) ui.showSubtitle("⚡ Tengo los fusibles. Iré a la caja.", 5000);
-                        }
-                    }
+                if (bat.visible && !bat.userData.collected && camera.position.distanceTo(bat.position) < 2.5 && checkLineOfSight(bat)) {
+                    bat.visible = false; bat.userData.collected = true; batteriesCollected++;
+                    playSound('objeto'); 
+                    ui.showSubtitle(`🔋 Fusible recogido (${batteriesCollected}/3)`, 2000);
+                    if (batteriesCollected === 3) ui.showSubtitle("Zare: 'Tengo los fusibles. Iré a la caja.'", 5000);
                 }
             });
         }

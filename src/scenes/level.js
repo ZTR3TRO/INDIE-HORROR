@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { scene, camera, transformControls } from '../core/world.js'; 
 import { CONFIG } from '../config.js'; 
+import { playSound } from '../core/audio.js';
 
 export let collidableObjects = [];
 let doors = []; 
@@ -9,7 +10,6 @@ let doors = [];
 export let phoneMesh, fuseboxMesh, keyMesh;
 export let batteries = []; 
 
-// Lista de luces de la casa (para el parpadeo)
 export let houseLights = []; 
 
 const loader = new GLTFLoader();
@@ -29,35 +29,48 @@ function loadHouse() {
         
         model.traverse((child) => {
             if (child.isMesh) {
-                // Las paredes RECIBEN sombras (de la linterna), pero la casa en sí 
-                // ya no necesita generar tantas sombras si quitamos las de los focos.
                 child.castShadow = true;
-                child.receiveShadow = true;
+                
+                const meshName = child.name.toLowerCase();
+                const isFoliage = meshName.includes("tree") || 
+                                  meshName.includes("plant") || 
+                                  meshName.includes("flower") || 
+                                  meshName.includes("nature") ||
+                                  meshName.includes("bush") ||
+                                  meshName.includes("grass") ||
+                                  meshName.includes("canopy");
 
-                // Apagar materiales emisivos (TVs verdes, etc.)
                 if (child.material) {
                     child.material.side = THREE.DoubleSide;
+                    
+                    if (isFoliage) {
+                        // 🌿 Sombra de Vegetación PS1: Recorte limpio y sin auto-sombreado.
+                        // CAMBIO AQUÍ: Bajamos a 0.2 para que las hojas finas no desaparezcan
+                        child.material.alphaTest = 0.2; 
+                        child.material.transparent = false; // Fuerza el recorte estilo PS1 y evita artefactos.
+                        child.receiveShadow = false;        // Evita que las hojas se auto-sombreen y se vean oscuras.
+                        child.material.depthWrite = true;   // Forzamos orden correcto de dibujado.
+                        child.material.needsUpdate = true;
+                    } else {
+                        // 🏠 Sombra de Casa: Limpia y normal.
+                        child.receiveShadow = true;
+                    }
+
                     if (child.material.emissive) {
                         child.material.emissive.setHex(0x000000); 
                         child.material.emissiveIntensity = 0;    
                     }
+
+                    if (child.material.map) {
+                        child.material.map.minFilter = THREE.NearestFilter;
+                        child.material.map.magFilter = THREE.NearestFilter;
+                    }
                 }
 
-                // 💡 DETECTAR FOCOS
                 if (child.name.includes("Focus")) {
-                    
-                    // Crear luz puntual (Naranja cálido)
-                    // Distancia 10m, Decay 2
                     const bulbLight = new THREE.PointLight(0xffaa00, 0, 10); 
-                    
-                    // 🛑 RENDIMIENTO MÁXIMO: SOMBRAS DESACTIVADAS EN LA CASA
-                    // Solo la linterna del jugador generará sombras.
-                    // Esto arregla la caída a 0 FPS.
                     bulbLight.castShadow = false; 
-                    
                     child.add(bulbLight);
-                    
-                    // Guardamos referencia para el parpadeo
                     houseLights.push({ light: bulbLight, mesh: child });
                 }
                 
@@ -72,8 +85,6 @@ function loadHouse() {
         console.log(`🏠 Casa cargada. Focos listos (Sin Sombras): ${houseLights.length}`);
     });
 }
-
-// ... (Resto de funciones: loadPhone, loadFuseBox, etc. IGUAL QUE ANTES) ...
 
 function loadPhone() {
     loader.load('assets/models/phone.glb', (gltf) => {
@@ -154,6 +165,12 @@ export function toggleDoor(door) {
     const direction = door.userData.isOpen ? -1 : 1;
     door.rotation.y += (Math.PI / 2) * direction;
     door.userData.isOpen = !door.userData.isOpen;
+
+    if (door.userData.isOpen) {
+        playSound('puerta_abierta');
+    } else {
+        playSound('puerta_cerrada');
+    }
 }
 
 export function pickupPhone() {

@@ -1,4 +1,3 @@
-
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
@@ -596,8 +595,15 @@ function loadLevel() {
         const model = gltf.scene;
         model.traverse((child) => {
             if (child.isMesh) {
-                child.castShadow = true; child.receiveShadow = true;
-                if(child.material) child.material.side = THREE.DoubleSide;
+                child.castShadow = true; 
+                child.receiveShadow = true;
+                
+                if(child.material) {
+                    child.material.side = THREE.DoubleSide;
+                    // --- CORRECCIÓN DE LA SOMBRA AQUÍ ---
+                    child.material.alphaTest = 0.5; 
+                }
+                
                 if (child.name.includes("Door") && !child.name.toLowerCase().includes("frame")) {
                     child.userData = { isOpen: false }; doors.push(child);
                 }

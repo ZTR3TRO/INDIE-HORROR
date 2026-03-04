@@ -3,7 +3,9 @@ import { controls, camera } from './world.js';
 import { CONFIG } from '../config.js';
 import { collidableObjects } from '../scenes/level.js';
 
-// 🔥 ESTA ES LA LÍNEA QUE FALTABA:
+// 👇 NUEVO: Importamos el sistema de audio
+import { playSound, stopSound } from './audio.js';
+
 export let debugInfo = { speed: 0, grounded: false, velocityY: 0 };
 
 let verticalVelocity = 0;
@@ -14,7 +16,10 @@ const collisionDistance = 0.5; // Distancia para chocar con paredes
 
 export function updatePlayer(delta, input) {
     // Si no tenemos el control, no hacemos nada
-    if (!controls.isLocked && !input.keys.flyMode) return;
+    if (!controls.isLocked && !input.keys.flyMode) {
+        stopSound('pasos'); // Asegurarnos de que no suene si abrimos un menú o perdemos el control
+        return;
+    }
 
     // --- 1. CALCULAR DIRECCIÓN ---
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
@@ -112,7 +117,6 @@ export function updatePlayer(delta, input) {
             }
         } else {
             // Si no detecta suelo (ej. saltando hueco o bug), aplicar gravedad simple
-            // pero con un tope mínimo para no caer al vacío infinito si hay bug
             if (camera.position.y > -10) { 
                 verticalVelocity -= CONFIG.PLAYER.GRAVITY * delta;
                 camera.position.y += verticalVelocity * delta;
@@ -122,4 +126,13 @@ export function updatePlayer(delta, input) {
     }
 
     debugInfo.velocityY = verticalVelocity;
+
+    // --- 5. LÓGICA DE SONIDO DE PASOS (NUEVO) ---
+    // Si nos estamos moviendo (speed > 0), estamos tocando el piso, y no estamos volando
+    if (debugInfo.speed > 0 && debugInfo.grounded && !input.keys.flyMode) {
+        playSound('pasos');
+    } else {
+        // Si nos detenemos, saltamos, o volamos, cortamos el sonido
+        stopSound('pasos');
+    }
 }

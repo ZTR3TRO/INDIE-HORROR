@@ -1,68 +1,62 @@
 import * as THREE from 'three';
-import { camera } from './world.js'; // El "oído" del jugador
-import { phoneMesh } from '../scenes/level.js'; // Para que el teléfono suene en 3D
+import { camera } from './world.js';
+import { phoneMesh } from '../scenes/level.js';
 
 const listener = new THREE.AudioListener();
 const audioLoader = new THREE.AudioLoader();
-
-// Aquí guardaremos los sonidos cargados
-const sounds = {
-    rain: null,
-    phone: null,
-    steps: null,
-    breath: null
-};
+export const sounds = {}; 
 
 export function initAudio() {
-    camera.add(listener); // Pegamos las orejas a la cámara
+    camera.add(listener);
 
-    // 1. CARGAR LLUVIA (Sonido Ambiente)
-    const rainSound = new THREE.Audio(listener);
-    audioLoader.load('assets/sounds/lluvia.mp3', (buffer) => {
-        rainSound.setBuffer(buffer);
-        rainSound.setLoop(true);
-        rainSound.setVolume(0.5);
-        sounds.rain = rainSound;
-        console.log("🌧️ Audio: Lluvia lista");
-    });
-
-    // 2. CARGAR TELÉFONO (Sonido 3D)
-    // Usamos PositionalAudio para que se escuche desde el buró
     const phoneSound = new THREE.PositionalAudio(listener);
     audioLoader.load('assets/sounds/telefono.mp3', (buffer) => {
         phoneSound.setBuffer(buffer);
         phoneSound.setLoop(true);
-        phoneSound.setRefDistance(1); // A 1 metro suena real
+        phoneSound.setRefDistance(1); 
         phoneSound.setVolume(1.0);
-        sounds.phone = phoneSound;
+        sounds['telefono'] = phoneSound; 
         
         if (phoneMesh) {
-            phoneMesh.add(phoneSound); // Pegar sonido al modelo 3D
-            console.log("☎️ Audio: Teléfono 3D listo");
+            phoneMesh.add(phoneSound);
         }
     });
 
-    // 3. CARGAR PASOS Y RESPIRACIÓN (Efectos simples)
-    loadEffect('pasos', 'assets/sounds/pasos.mp3');
-    loadEffect('breath', 'assets/sounds/respiracion.mp3');
+    // --- CARGA DE TODOS TUS AUDIOS ---
+    loadSound('lluvia', 'assets/sounds/lluvia.mp3', true, 0.3);
+    loadSound('pasos', 'assets/sounds/pasos.mp3', false, 0.8);
+    loadSound('respiracion', 'assets/sounds/respiracion.mp3', true, 0.6);
+    loadSound('tinitus', 'assets/sounds/tinitus.mp3', false, 0.4);
+    
+    loadSound('puerta_scream', 'assets/sounds/puerta_scream.mp3', false, 1.5); 
+    loadSound('zumbido_electrico', 'assets/sounds/zumbido_electrico.mp3', true, 0.2);
+    
+    // 👇 SUBIMOS EL VOLUMEN DE LA EXPLOSIÓN AL MÁXIMO (2.5)
+    loadSound('explosion', 'assets/sounds/explosion.mp3', false, 2.5); 
+    
+    loadSound('jumpscare', 'assets/sounds/jumpscare.mp3', false, 1.0);
+    loadSound('puerta_abierta', 'assets/sounds/puerta_abierta.mp3', false, 1.5);
+    loadSound('puerta_cerrada', 'assets/sounds/puerta_cerrada.mp3', false, 1.5);
+    loadSound('chispazo', 'assets/sounds/chispazo.mp3', false, 0.5);
+    loadSound('objeto', 'assets/sounds/objeto.mp3', false, 1.2); 
+    
+    // 👇 LOS DOS SONIDOS NUEVOS
+    loadSound('puerta_bloqueda', 'assets/sounds/puerta_bloqueda.mp3', false, 1.5); 
+    loadSound('tocando', 'assets/sounds/tocando.mp3', false, 1.5); 
 }
 
-// Helper para cargar efectos simples
-function loadEffect(name, path) {
+function loadSound(name, path, loop = false, volume = 1.0) {
     const sound = new THREE.Audio(listener);
     audioLoader.load(path, (buffer) => {
         sound.setBuffer(buffer);
-        sound.setLoop(false);
-        sound.setVolume(0.8);
+        sound.setLoop(loop);
+        sound.setVolume(volume);
         sounds[name] = sound;
     });
 }
 
-// --- FUNCIONES PARA USAR EN EL JUEGO ---
-
 export function playSound(name) {
-    if (sounds[name]) {
-        if (sounds[name].isPlaying) sounds[name].stop(); // Reiniciar si ya suena
+    if (sounds[name] && !sounds[name].isPlaying) {
         sounds[name].play();
     }
 }
@@ -73,22 +67,16 @@ export function stopSound(name) {
     }
 }
 
-// ... (Todo tu código anterior de initAudio y helpers sigue igual)
+export function isPlaying(name) {
+    return sounds[name] && sounds[name].isPlaying;
+}
 
-// --- FUNCIÓN NUEVA: CONTROL DE LLUVIA ---
 export function updateRainVolume(isInside) {
-    if (!sounds.rain) return;
-
-    // Definir volúmenes objetivo
-    const targetVolume = isInside ? 0.15 : 1.0; // 0.15 adentro (suave), 1.0 afuera (fuerte)
-    
-    // Obtener volumen actual
-    const currentVolume = sounds.rain.getVolume();
-
-    // "Lerp" para que el cambio sea suave y no de golpe
-    // Si la diferencia es muy pequeña, ya no calculamos para ahorrar CPU
+    if (!sounds['lluvia']) return;
+    const targetVolume = isInside ? 0.15 : 1.0; 
+    const currentVolume = sounds['lluvia'].getVolume();
     if (Math.abs(currentVolume - targetVolume) > 0.01) {
-        const newVolume = currentVolume + (targetVolume - currentVolume) * 0.05; // 0.05 es la velocidad del cambio
-        sounds.rain.setVolume(newVolume);
+        const newVolume = currentVolume + (targetVolume - currentVolume) * 0.05;
+        sounds['lluvia'].setVolume(newVolume);
     }
 }

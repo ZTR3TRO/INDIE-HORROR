@@ -11,7 +11,7 @@ export const CONFIG = {
 
         BATTERIES: [
             new THREE.Vector3(4.51, 2.28, -9.32),
-            new THREE.Vector3(2.78, 5.62, -9.69),
+            new THREE.Vector3(4.07, 2.03, -13.27), // 👈 SEGUNDA BATERÍA ACTUALIZADA
             new THREE.Vector3(0.59, 0.76, -2.63)
         ],
 
@@ -29,7 +29,7 @@ export const CONFIG = {
         
         BATTERIES: [
             new THREE.Euler(0.86, 0.51, -2.06), 
-            new THREE.Euler(-2.16, 0.28, 1.23), 
+            new THREE.Euler(0.00, 0.00, 0.00),     // 👈 ROTACIÓN BATERÍA 2 ACTUALIZADA
             new THREE.Euler(-1.80, 0.35, 0.56)  
         ]
     },
@@ -39,7 +39,7 @@ export const CONFIG = {
         LAPTOP: new THREE.Vector3(0.19, 0.21, 0.21),
         BATTERIES: [
             new THREE.Vector3(0.22, 0.23, 0.30),
-            new THREE.Vector3(0.30, 0.30, 0.30),
+            new THREE.Vector3(0.30, 0.30, 0.30),   // Escala de Batería 2 (se mantiene igual según log)
             new THREE.Vector3(0.30, 0.30, 0.30)
         ]
     },

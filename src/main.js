@@ -3,11 +3,12 @@ import { CONFIG } from './config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, laptopMesh, laptopWorldPosition } from './scenes/level.js';
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition } from './scenes/level.js';
 import { updatePlayer, debugInfo } from './core/player.js'; 
 import { initUI, ui } from './ui.js';            
 import { initLaptop, toggleLaptopUI } from './laptopUI.js'; 
 import { initNumpad, toggleNumpadUI } from './numpadUI.js'; 
+import { initBook, toggleBookUI } from './bookUI.js'; 
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 import { DIALOGUES, playDialogueSequence } from './dialogues.js';
@@ -18,6 +19,7 @@ initLevel();
 initUI(); 
 initLaptop(); 
 initNumpad(); 
+initBook(); 
 initAudio(); 
 createRain(); 
 
@@ -35,13 +37,14 @@ let powerOutageCall = false;
 let powerOutageAnswered = false;  
 let powerRestored = false;
 let isLaptopOpen = false;
-let isNumpadOpen = false; // Preparado para cuando conectemos la puerta final
+let isNumpadOpen = false; 
+let isBookOpen = false; 
 
 let finalCallTriggered = false;
 let finalCallAnswered = false;
 
 const debugDiv = document.createElement('div');
-debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.7); padding:10px; pointer-events:none; font-size:12px;";
+debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.7); padding:10px; pointer-events:none; font-size:12px; line-height:1.6;";
 document.body.appendChild(debugDiv);
 
 const startBtn = document.getElementById('startBtn');
@@ -57,8 +60,7 @@ if(startBtn) {
 }
 
 renderer.domElement.addEventListener('click', () => {
-    // Evitamos bloquear la cámara si alguna interfaz está abierta
-    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen) controls.lock();
+    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen) controls.lock();
 });
 
 function checkLineOfSight(targetPosition) {
@@ -74,6 +76,17 @@ function checkLineOfSight(targetPosition) {
     return true;
 }
 
+const interactRay = new THREE.Raycaster();
+const INTERACT_DISTANCE = 1.8;
+
+function getInteractTarget() {
+    interactRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+    interactRay.far = INTERACT_DISTANCE;
+    const hits = interactRay.intersectObjects(collidableObjects, true);
+    if (hits.length === 0) return null;
+    return hits[0];
+}
+
 function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
@@ -85,16 +98,45 @@ function animate() {
     debugRay.setFromCamera(new THREE.Vector2(0, 0), camera);
     const debugHits = debugRay.intersectObject(scene, true);
     let objectName = "---";
-    if (debugHits.length > 0) objectName = debugHits[0].object.name;
+    let objectPos = "---";
+    let objectWorldPos = "---";
+    if (debugHits.length > 0) {
+        const hit = debugHits[0];
+        objectName = hit.object.name;
+        const lp = hit.object.position;
+        objectPos = `${lp.x.toFixed(2)}, ${lp.y.toFixed(2)}, ${lp.z.toFixed(2)}`;
+        const wp = new THREE.Vector3();
+        hit.object.getWorldPosition(wp);
+        objectWorldPos = `${wp.x.toFixed(2)}, ${wp.y.toFixed(2)}, ${wp.z.toFixed(2)}`;
+    }
+
+    const cp = camera.position;
+    const camPos = `${cp.x.toFixed(2)}, ${cp.y.toFixed(2)}, ${cp.z.toFixed(2)}`;
 
     const distToLaptop = laptopWorldPosition.lengthSq() > 0 
         ? camera.position.distanceTo(laptopWorldPosition).toFixed(2) 
         : '?';
-    debugDiv.innerHTML = `OBJETO: ${objectName}<br>LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>FOCOS: ${houseLights.length}<br>Estado: ${gameState}<br>DIST LAPTOP: ${distToLaptop}`;
+
+    const distToBook = bookWorldPosition && bookWorldPosition.lengthSq() > 0
+        ? camera.position.distanceTo(bookWorldPosition).toFixed(2)
+        : '?';
+
+    const distToKey = keyWorldPosition && keyWorldPosition.lengthSq() > 0
+        ? camera.position.distanceTo(keyWorldPosition).toFixed(2)
+        : '?';
+
+    debugDiv.innerHTML = `
+        OBJETO: ${objectName}<br>
+        POS LOCAL: ${objectPos}<br>
+        POS MUNDO: ${objectWorldPos}<br>
+        CAM: ${camPos}<br>
+        LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>
+        Estado: ${gameState}<br>
+        DIST LAPTOP: ${distToLaptop} | DIST BOOK: ${distToBook} | DIST KEY: ${distToKey}
+    `.trim();
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
 
-    // --- MÁQUINA DE ESTADOS ---
     if (gameState === 'WAKING_UP') {
         stateTimer += delta;
         const progress = Math.min(stateTimer / CONFIG.TIMING.WAKE_DURATION, 1.0);
@@ -116,7 +158,7 @@ function animate() {
     }
 
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
-        if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen) updatePlayer(delta, input);
+        if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen && !isBookOpen) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
         }
@@ -172,10 +214,8 @@ function animate() {
                 const esTocando = Math.random() > 0.5;
                 if (esTocando) playSound('tocando');
                 else playSound('puerta_scream');
-                
                 const frases = esTocando ? DIALOGUES.PARANOIA_TOCANDO : DIALOGUES.PARANOIA_PUERTA;
                 const fraseElegida = frases[Math.floor(Math.random() * frases.length)];
-                
                 setTimeout(() => { ui.showSubtitle(fraseElegida, 3000); }, 800);
             }
             paranoiaTimer = 0; 
@@ -196,7 +236,6 @@ function animate() {
 // --- INTERACCIÓN ---
 input.actions.onInteract = () => {
     
-    // 📞 1. PRIMERA LLAMADA
     if (gameState === 'PHONE_RINGING') {
         if (camera.position.distanceTo(CONFIG.POSITIONS.PHONE) < 2.5) {
             ui.showInteract(false); 
@@ -206,7 +245,6 @@ input.actions.onInteract = () => {
             pickupPhone(); 
             gameState = 'IN_CALL'; 
             stateTimer = 0;
-
             playDialogueSequence(ui, DIALOGUES.CALL_1, () => {
                 ui.showCall(false); 
                 ui.showBlackScreen(true); 
@@ -220,70 +258,148 @@ input.actions.onInteract = () => {
     }
 
     if (gameState === 'GAMEPLAY') {
-        
-        // 💻 INTERACCIÓN CON LAPTOP
+
+        // 🔑 RECOGER LLAVE — Apuntado Asistido Amplio
+        if (!hasKey && keyMesh && keyMesh.visible) {
+            const distToKey = camera.position.distanceTo(keyWorldPosition);
+            if (distToKey < 3.0) {
+                const cameraDir = new THREE.Vector3();
+                camera.getWorldDirection(cameraDir);
+                const toKey = new THREE.Vector3().subVectors(keyWorldPosition, camera.position).normalize();
+                
+                if (cameraDir.dot(toKey) > 0.6) { // 0.6 es un ángulo mega indulgente
+                    keyMesh.visible = false; 
+                    hasKey = true; 
+                    playSound('objeto'); 
+                    ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
+                    return;
+                }
+            }
+        }
+
+        // 🔋 BATERÍAS — Movido al principio para que los muebles no estorben
+        let batteryCollectedThisFrame = false;
+        if (batteries.length > 0) {
+            batteries.forEach((bat, index) => {
+                if (!batteryCollectedThisFrame && bat.visible && !bat.userData.collected) {
+                    const batWorldPos = new THREE.Vector3();
+                    bat.getWorldPosition(batWorldPos);
+                    
+                    const distToBat = camera.position.distanceTo(batWorldPos);
+                    
+                    if (distToBat < 3.0) { // Radio aumentado a 3 metros
+                        const cameraDir = new THREE.Vector3();
+                        camera.getWorldDirection(cameraDir);
+                        const toBat = new THREE.Vector3().subVectors(batWorldPos, camera.position).normalize();
+                        
+                        const dotProduct = cameraDir.dot(toBat);
+                        
+                        console.log(`🔋 Batería ${index+1} | Distancia: ${distToBat.toFixed(2)}m | Alineación (Dot): ${dotProduct.toFixed(2)}`);
+                        
+                        // Si el dot > 0.6 significa que está dentro del 40% central de tu pantalla
+                        if (dotProduct > 0.6) { 
+                            bat.visible = false; 
+                            bat.userData.collected = true; 
+                            batteriesCollected++;
+                            batteryCollectedThisFrame = true; // Evita recoger dos en un solo clic
+                            playSound('objeto'); 
+                            ui.showSubtitle(`🔋 Fusible recogido (${batteriesCollected}/3)`, 2000);
+                            
+                            if (batteriesCollected === 3) {
+                                setTimeout(() => {
+                                    ui.showSubtitle("Zare: 'Tengo los fusibles. Iré a la caja.'", 5000);
+                                }, 2000);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        if (batteryCollectedThisFrame) return; // Rompemos si agarró batería para no abrir puertas por error
+
+        const hit = getInteractTarget();
+        const hitObject = hit ? hit.object : null;
+        const hitDist = hit ? hit.distance : 999;
+
+        console.log("🎯 CLIC en:", hitObject ? hitObject.name : "NADA", "| Distancia:", hitDist.toFixed(2));
+
+        let hitIsBook = false;
+        let hitIsDoor = false;
+        let hitNode = hitObject;
+        while (hitNode) {
+            if (hitNode.userData.isBook) hitIsBook = true;
+            if (hitNode.userData.isDoor) hitIsDoor = true;
+            hitNode = hitNode.parent;
+        }
+
+        // 💻 LAPTOP
         if (laptopMesh && laptopWorldPosition.lengthSq() > 0) {
             const distToLaptop = camera.position.distanceTo(laptopWorldPosition);
-            if (distToLaptop < 1.5) { 
-                if (!isLaptopOpen) {
+            if (distToLaptop < 1.5 && hitDist < INTERACT_DISTANCE) {
+                let node = hitObject;
+                let esLaptop = false;
+                while (node) {
+                    if (node === laptopMesh) { esLaptop = true; break; }
+                    node = node.parent;
+                }
+                if (esLaptop && !isLaptopOpen) {
                     isLaptopOpen = true;
                     controls.unlock();
-                    toggleLaptopUI(true); 
-                    
+                    toggleLaptopUI(true);
                     const exitBtn = document.getElementById('exitLaptopBtn');
-                    if(exitBtn) {
+                    if (exitBtn) {
                         exitBtn.onclick = () => {
                             toggleLaptopUI(false);
                             isLaptopOpen = false;
                             controls.lock();
                         };
                     }
+                    return;
                 }
-                return;
             }
         }
 
-        // 📞 2. SEGUNDA LLAMADA
+        // 📖 LIBRO
+        if (hitIsBook && !hitIsDoor) {
+            const distToBook = bookWorldPosition && bookWorldPosition.lengthSq() > 0
+                ? camera.position.distanceTo(bookWorldPosition)
+                : 999;
+            if (distToBook < 1.5 && !isBookOpen) {
+                isBookOpen = true;
+                toggleBookUI(true);
+                playSound('objeto'); 
+                controls.unlock(); 
+            }
+            return;
+        }
+
+        // 📞 SEGUNDA LLAMADA
         if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain && !finalCallTriggered) {
             stopSound('telefono');
             phoneMesh.userData.isRingingAgain = false; 
             powerOutageAnswered = true; 
             ui.showCall(true);
-
             playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
                 ui.showCall(false);
-                ui.showSubtitle("Misión: Buscar LLAVE para abrir el GARAJE", 6000);
+                ui.showSubtitle("Misión: Ve a la caja de fusibles en el GARAJE", 6000);
             });
-            
             return;
         }
 
-        // 📞 3. TERCERA LLAMADA
+        // 📞 TERCERA LLAMADA
         if (finalCallTriggered && !finalCallAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
             stopSound('telefono');
             phoneMesh.userData.isRingingAgain = false; 
             finalCallAnswered = true; 
             ui.showCall(true);
-
             playDialogueSequence(ui, DIALOGUES.CALL_FINAL, () => {
                 ui.showCall(false);
-                ui.showSubtitle("Misión: Encuentra el CÓDIGO de 4 dígitos para escapar", 6000);
+                ui.showSubtitle("Misión: ¡ESCAPA POR LA PUERTA PRINCIPAL!", 6000);
             });
-            
             return;
         }
 
-        // 3. RECOGER LLAVE
-        if (!hasKey && keyMesh && keyMesh.visible) {
-            if (camera.position.distanceTo(keyMesh.position) < 2.5 && checkLineOfSight(keyMesh.position)) {
-                keyMesh.visible = false; hasKey = true; 
-                playSound('objeto'); 
-                ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
-                return;
-            }
-        }
-
-        // 4. CAJA DE FUSIBLES
+        // ⚡ CAJA DE FUSIBLES
         if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5 && checkLineOfSight(CONFIG.POSITIONS.FUSEBOX)) {
             if (batteriesCollected === 3) {
                 if (!powerRestored) {
@@ -310,7 +426,6 @@ input.actions.onInteract = () => {
                                 if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
                             }
                         });
-                        
                         if (Math.random() > 0.7) playSound('chispazo'); 
                         if (Math.random() > 0.8) houseLights.forEach(item => { item.light.intensity = 0; });
                     }, 100); 
@@ -318,24 +433,18 @@ input.actions.onInteract = () => {
                     setTimeout(() => {
                         clearInterval(blackoutLoop); 
                         powerRestored = false; 
-                        
                         houseLights.forEach(item => {
                             item.light.intensity = 0;
                             if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
                         });
                         ambientLight.intensity = 0;
-                        
                         stopSound('zumbido_electrico'); 
                         ui.showSubtitle("💀 El sistema colapsó por completo...", 5000);
-
                         setTimeout(() => {
                             playSound('telefono');
                             finalCallTriggered = true;
-                            if(phoneMesh) {
-                                phoneMesh.userData.isRingingAgain = true; 
-                            }
+                            if(phoneMesh) phoneMesh.userData.isRingingAgain = true;
                         }, 5000);
-
                     }, 15000); 
                 }
             } else {
@@ -344,36 +453,58 @@ input.actions.onInteract = () => {
             return;
         }
 
-        // 5. PUERTAS
+        // 🚪 PUERTAS Y CANDADOS
         const door = getHoveredDoor();
         if (door) {
             const dist = camera.position.distanceTo(door.position);
             if (dist > 2.5) return;
-            const isLockedDoor = door.name.includes("Door_008") || door.name.includes("Door_08"); 
             
-            if (isLockedDoor && !door.userData.isOpen) {
-                if (!hasKey) { 
+            const isGarageDoor = door.name.includes("Door_008") || door.name.includes("Door_08"); 
+            
+            // 👇 SUSTITUYE ESTE NOMBRE POR EL DE TU PUERTA PRINCIPAL
+            const isMainDoor = door.name.includes("NOMBRE_DE_PUERTA_PRINCIPAL"); 
+
+            // Lógica de Puerta Principal
+            if (isMainDoor) {
+                if (finalCallAnswered) { 
                     playSound('puerta_bloqueda'); 
-                    ui.showSubtitle("Zare: 'Está cerrada... necesito la llave.'", 3000); 
-                    return; 
-                }
-                else { 
-                    ui.showSubtitle("🔓 Abriendo...", 2000); 
+                    ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
+                    
+                    if (!isNumpadOpen) {
+                        isNumpadOpen = true;
+                        controls.unlock();
+                        toggleNumpadUI(true);
+                        
+                        setTimeout(() => {
+                            ui.showSubtitle("Misión: Buscar los CÓDIGOS en la casa para escapar", 6000);
+                        }, 4000);
+                    }
+                    return;
+                } else {
+                    playSound('puerta_bloqueda'); 
+                    ui.showSubtitle("Zare: 'Está lloviendo demasiado fuerte, no saldré ahora.'", 3000);
+                    return;
                 }
             }
-            toggleDoor(door); return;
-        }
 
-        // 6. BATERÍAS
-        if (batteries.length > 0) {
-            batteries.forEach((bat) => {
-                if (bat.visible && !bat.userData.collected && camera.position.distanceTo(bat.position) < 2.5 && checkLineOfSight(bat.position)) {
-                    bat.visible = false; bat.userData.collected = true; batteriesCollected++;
-                    playSound('objeto'); 
-                    ui.showSubtitle(`🔋 Fusible recogido (${batteriesCollected}/3)`, 2000);
-                    if (batteriesCollected === 3) ui.showSubtitle("Zare: 'Tengo los fusibles. Iré a la caja.'", 5000);
+            // Lógica de Puerta del Garaje
+            if (isGarageDoor && !door.userData.isOpen) {
+                if (!hasKey) { 
+                    playSound('puerta_bloqueda'); 
+                    ui.showSubtitle("Zare: 'Maldición, tiene candado... necesito buscar la llave.'", 4000); 
+                    
+                    setTimeout(() => {
+                        ui.showSubtitle("Misión: Buscar LLAVE en la casa para abrir el GARAJE", 5000);
+                    }, 4000);
+                    return; 
+                } else { 
+                    ui.showSubtitle("🔓 Abriendo con la llave...", 2000); 
                 }
-            });
+            }
+
+            // Resto de las puertas normales
+            toggleDoor(door); 
+            return;
         }
     }
 };
@@ -397,25 +528,33 @@ input.actions.onFogDown = () => { scene.fog.density = Math.max(0, scene.fog.dens
 function triggerExplosion() { 
     createExplosionEffect(); let f=0; 
     const i = setInterval(() => { f++; explosionLight.intensity = f%2==0?200:0; if(f>10) { clearInterval(i); explosionLight.intensity=0; gameState='TRAVELING'; stateTimer=0; } }, 80); 
-};
+}
 
-// --- CERRAR INTERFACES CON LA TECLA ESC ---
+// --- CERRAR INTERFACES CON Q o ESC ---
 document.addEventListener('keydown', (e) => {
-    if (e.key === 'q') {
+    const key = e.key.toLowerCase();
+    if (key === 'q' || e.key === 'Escape') {
         if (isLaptopOpen) {
             toggleLaptopUI(false);
             isLaptopOpen = false;
-            // Retrasamos un milisegundo el lock para que no se pelee con el ESC nativo del navegador
             setTimeout(() => { controls.lock(); }, 10); 
         }
-        
         if (isNumpadOpen) {
             toggleNumpadUI(false);
             isNumpadOpen = false;
             setTimeout(() => { controls.lock(); }, 10);
         }
+        if (isBookOpen) { 
+            toggleBookUI(false);
+            isBookOpen = false;
+            
+            setTimeout(() => { 
+                ui.showSubtitle("Zare: 'Tenía razón... esta casa está mal. Tengo que avisarle a Daniel.'", 5000);
+            }, 500); 
+            
+            setTimeout(() => { controls.lock(); }, 10);
+        }
     }
 });
-
 
 animate();

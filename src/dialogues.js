@@ -3,50 +3,49 @@ export const DIALOGUES = {
     
     // Llamada 1 (Cinemática inicial)
     CALL_1: [
-        { text: "Daniel: 'Hola amor, ya salí del trabajo, voy en camino...'", duration: 4000, startAt: 0 },
-        { text: "Daniel: 'Hay mucha lluvia de este lado, ¿qué tal está todo allá?'", duration: 4000, startAt: 4000 },
-        { text: "Zare: 'Hola amor, sí aquí también está la lluvia muy fuerte.'", duration: 4000, startAt: 8000 },
-        { text: "Zare: 'Vente con cuidado, te amo.'", duration: 3000, startAt: 12000 },
-        { text: "Daniel: 'Sí, también te amo.'", duration: 3000, startAt: 15000 }
+        { text: "Daniel: 'Hola amor, ya salí del trabajo, voy en camino...'", duration: 3500, startAt: 0 },
+        { text: "Daniel: 'Hay mucha lluvia de este lado, ¿qué tal está todo allá?'", duration: 3500, startAt: 4000 },
+        { text: "Zare: 'Aquí también... Oye, esta casa nueva me da escalofríos. Escucho ruidos raros.'", duration: 4500, startAt: 8000 },
+        { text: "Daniel: 'Amor, nos acabamos de mudar. Es una casa vieja, la madera suena. No te sugestiones.'", duration: 5000, startAt: 13000 },
+        { text: "Zare: 'De acuerdo... Vente con cuidado, te amo.'", duration: 3000, startAt: 18500 },
+        { text: "Daniel: 'Sí, también te amo. Llego pronto.'", duration: 3000, startAt: 22000 }
     ],
 
     // Llamada 2 (Apagón)
     CALL_2: [
-        { text: "Daniel: 'Amor hubo un apagón en toda la ciudad, ¿todo bien en casa?'", duration: 4500, startAt: 0 },
-        { text: "Zare: 'Sí, todo bien pero parece que se fue la luz...'", duration: 4000, startAt: 4500 },
-        { text: "Zare: 'Explotó algo cerca de aquí.'", duration: 3500, startAt: 8500 },
-        { text: "Daniel: 'Revisa los fusibles, quizás solo hay que cambiarlo...'", duration: 4500, startAt: 12000 },
-        { text: "Daniel: 'La caja de fusibles está en el garage.'", duration: 4000, startAt: 16500 },
-        { text: "Zare: 'Okey amor, lo haré, hablamos luego.'", duration: 4000, startAt: 20500 }
+        { text: "Daniel: 'Amor hubo un apagón en toda la ciudad, ¿todo bien en casa?'", duration: 4000, startAt: 0 },
+        { text: "Zare: 'Sí... explotó algo cerca. Se fue la luz.'", duration: 3500, startAt: 4500 },
+        { text: "Zare: 'Pero Daniel, te juro que escuché pasos en el pasillo... ¡Tengo miedo!'", duration: 4500, startAt: 8500 },
+        { text: "Daniel: 'Tranquila, es tu imaginación. Revisa los fusibles, quizás solo hay que cambiarlo...'", duration: 4500, startAt: 13500 },
+        { text: "Daniel: 'La caja de fusibles está en el garage.'", duration: 3500, startAt: 18500 },
+        { text: "Zare: 'Okey, lo haré. Apresúrate por favor.'", duration: 3500, startAt: 22500 }
     ],
 
-    // 👇 NUEVO: Llamada 3 (El escape final)
+    // 👇 NUEVA: Llamada 3 (La revelación de la cámara)
     CALL_FINAL: [
-        { text: "Daniel: 'Zare... Zare ¿estás ahí?'", duration: 3000, startAt: 0 },
-        { text: "Zare: '¡Se volvió a ir todo al carajo! La luz murió.'", duration: 3000, startAt: 3000 },
-        { text: "Daniel: 'Sal de ahí YA. Escúchame bien: no estás solo en esa casa.'", duration: 4000, startAt: 6000 },
-        { text: "Zare: '¿De qué diablos hablas? La puerta principal tiene candado.'", duration: 4000, startAt: 10000 },
-        { text: "Daniel: 'Busca las pistas a oscuras. Encuentra el código... ¡Apúrate antes de que te atrape!'", duration: 5000, startAt: 14000 }
+        { text: "Daniel: '¡Zare! ¡Zare contesta!'", duration: 3000, startAt: 0 },
+        { text: "Zare: '¡La luz volvió a morir! ¡Te dije que había alguien aquí!'", duration: 4000, startAt: 3000 },
+        { text: "Daniel: 'Escúchame... la cámara de la sala subió un clip a la nube justo antes de la explosión...'", duration: 5500, startAt: 7500 },
+        { text: "Daniel: 'Había alguien muy alto... parado detrás de ti en la oscuridad. ¡SAL DE LA CASA AHORA MISMO!'", duration: 6000, startAt: 13500 },
+        { text: "Zare: '¡Dios mío! ¡Voy a la puerta principal!'", duration: 3500, startAt: 20000 }
     ],
 
     // Frases sueltas para el sistema de paranoia
     PARANOIA_TOCANDO: [
         "Zare: '¿Qué fue eso...?'",
         "Zare: '¿Alguien está tocando...?'",
-        "Zare: 'Juro que escuché algo...'",
+        "Zare: 'No... acabamos de mudarnos, nadie sabe que estamos aquí.'",
         "Zare: 'Solo es el viento... espero.'"
     ],
     PARANOIA_PUERTA: [
         "Zare: '¿Qué fue eso...?'",
         "Zare: '¿Se cerró una puerta?'",
-        "Zare: 'Juro que escuché algo...'",
-        "Zare: 'Solo es el viento... espero.'"
+        "Zare: 'Daniel dijo que era la madera vieja... sí, solo eso.'",
+        "Zare: 'Odio esta casa.'"
     ]
 };
 
-
 // --- REPRODUCTOR DE DIÁLOGOS ---
-// Esta función lee el guion y muestra los subtítulos automáticamente
 export function playDialogueSequence(ui, sequence, onComplete) {
     let maxTime = 0;
     
@@ -55,14 +54,12 @@ export function playDialogueSequence(ui, sequence, onComplete) {
             ui.showSubtitle(line.text, line.duration);
         }, line.startAt);
         
-        // Calculamos cuándo termina el diálogo más largo
         if (line.startAt + line.duration > maxTime) {
             maxTime = line.startAt + line.duration;
         }
     });
 
-    // Si pasamos una función para ejecutar al final (ej. cambiar de cámara o dar misión)
     if (onComplete) {
-        setTimeout(onComplete, maxTime + 500); // 500ms de respiro al final
+        setTimeout(onComplete, maxTime + 500); 
     }
 }

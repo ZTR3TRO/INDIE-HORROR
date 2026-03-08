@@ -4,6 +4,9 @@ import { scene, camera, transformControls } from '../core/world.js';
 import { CONFIG } from '../config.js'; 
 import { playSound } from '../core/audio.js';
 
+export let keyWorldPosition = new THREE.Vector3();
+export let bookWorldPosition = new THREE.Vector3();
+
 export let collidableObjects = [];
 let doors = []; 
 
@@ -12,8 +15,6 @@ export let batteries = [];
 
 export let houseLights = []; 
 
-// 💻 Posición "lógica" de la laptop para cálculos de distancia e interacción
-// Se asigna cuando la laptop carga, separada del mesh group para evitar bugs con GLTF
 export let laptopWorldPosition = new THREE.Vector3();
 
 const loader = new GLTFLoader();
@@ -34,16 +35,24 @@ function loadHouse() {
         
         model.traverse((child) => {
             if (child.isMesh) {
-                // 1. ELIMINAR EL LIBRO QUE ESTORBA
+                const meshName = child.name.toLowerCase();
+
+                // 1. ELIMINAR EL LIBRO QUE ESTORBA A LA LAPTOP
                 if (child.name === "Book_02") {
                     child.visible = false;
                     child.position.set(0, -100, 0);
                     return;
                 }
 
-                // 2. APAGAR TELEVISORES
-                const name = child.name.toLowerCase();
-                if (name.includes("tv") || name.includes("television") || name.includes("pantalla")) {
+                // 2. PREPARAR EL LIBRO DE LORE
+                if (meshName.includes("books_005")) {
+                    child.userData.isBook = true;
+                    if (child.parent) child.parent.userData.isBook = true;
+                    child.getWorldPosition(bookWorldPosition); 
+                }
+
+                // 3. APAGAR TELEVISORES
+                if (meshName.includes("tv") || meshName.includes("television") || meshName.includes("pantalla")) {
                     if (child.material) {
                         child.material.emissive.setHex(0x000000);
                         child.material.emissiveIntensity = 0;
@@ -52,17 +61,25 @@ function loadHouse() {
                 }
 
                 child.castShadow = true;
-                const meshName = child.name.toLowerCase();
-                const isFoliage = meshName.includes("tree") || 
-                                  meshName.includes("plant") || 
-                                  meshName.includes("flower") || 
-                                  meshName.includes("nature") ||
-                                  meshName.includes("bush") ||
-                                  meshName.includes("grass") ||
-                                  meshName.includes("canopy");
+                const isFoliage = meshName.includes("tree") || meshName.includes("plant") || meshName.includes("nature") || meshName.includes("bush");
 
-                if (child.material) {
+                // 4. CREAR MATERIAL DE CRISTAL REAL DESDE CERO
+                if (meshName.includes("glass") || meshName.includes("window") || meshName.includes("cristal")) {
+                    child.material = new THREE.MeshStandardMaterial({
+                        color: 0x000000, 
+                        transparent: true,
+                        opacity: 0.25, 
+                        roughness: 0.1, 
+                        metalness: 0.6, 
+                        depthWrite: false, 
+                        side: THREE.DoubleSide
+                    });
+                    child.receiveShadow = false;
+                    child.castShadow = false;
+                } 
+                else if (child.material) {
                     child.material.side = THREE.DoubleSide;
+                    
                     if (isFoliage) {
                         child.material.alphaTest = 0.2; 
                         child.material.transparent = false;
@@ -71,9 +88,12 @@ function loadHouse() {
                         child.material.needsUpdate = true;
                     } else {
                         child.receiveShadow = true;
+                        child.material.transparent = false; 
+                        child.material.depthWrite = true;
+                        child.material.opacity = 1.0;
                     }
 
-                    if (child.material.emissive && !child.name.includes("Focus")) {
+                    if (child.material.emissive && !child.name.includes("Focus") && child.material.name !== 'mat15') {
                         child.material.emissive.setHex(0x000000);
                         child.material.emissiveIntensity = 0;
                     }
@@ -84,11 +104,11 @@ function loadHouse() {
                     }
                 }
 
+                // FOCOS APAGADOS AL INICIO
                 if (child.name.includes("Focus")) {
                     const bulbLight = new THREE.PointLight(0xffaa00, 0, 10); 
                     child.add(bulbLight);
                     
-                    // 👇 NUEVO: Forzamos que el material del foco empiece totalmente apagado
                     if (child.material) {
                         child.material.emissive.setHex(0x000000);
                         child.material.emissiveIntensity = 0;
@@ -96,18 +116,18 @@ function loadHouse() {
 
                     houseLights.push({ light: bulbLight, mesh: child });
                 }
-
-
                 
-                if (child.name.includes("Door") && !child.name.toLowerCase().includes("frame")) {
-                    child.userData = { isOpen: false, isDoor: true }; 
+                // ✅ PUERTAS
+                if (child.name.includes("Door") && !meshName.includes("frame")) {
+                    child.userData.isOpen = false;
+                    child.userData.isDoor = true;
                     doors.push(child);
                 }
                 
                 collidableObjects.push(child);
             }
         });
-        console.log("🏠 Casa lista y teles apagadas.");
+        console.log("🏠 Casa lista. Books_005 preparado para leer.");
     });
 }
 
@@ -119,21 +139,21 @@ function loadLaptop() {
         laptopMesh.rotation.copy(CONFIG.ROTATIONS.LAPTOP);
         laptopMesh.scale.copy(CONFIG.SCALES.LAPTOP);
         
-        // ✅ FIX 1: Guardamos la posición mundial real en una variable separada.
-        // laptopMesh.position en un Group GLTF a veces no refleja la posición real
-        // de los meshes hijos. Esto garantiza cálculos de distancia correctos.
         laptopWorldPosition.copy(CONFIG.POSITIONS.LAPTOP);
 
-        // ✅ FIX 2: La laptop tiene su propia luz tenue (pantalla azul).
-        // Así es visible incluso con ambientLight = 0 (apagón).
-        const screenGlow = new THREE.PointLight(0x0044ff, 0.8, 3);
-        screenGlow.position.set(0, 0, 0);
-        laptopMesh.add(screenGlow);
+        laptopMesh.traverse((child) => {
+            if (child.isMesh && child.material) {
+                if (child.material.name === 'mat15') {
+                    child.material = child.material.clone();
+                    child.material.emissive.setHex(0x002288);
+                    child.material.emissiveIntensity = 0.5;
+                }
+            }
+        });
 
         scene.add(laptopMesh);
         collidableObjects.push(laptopMesh);
 
-        console.log("💻 Laptop cargada en:", laptopWorldPosition);
     }, undefined, (err) => {
         console.error("❌ Error al cargar laptop.glb:", err);
     });
@@ -190,13 +210,25 @@ function loadKey() {
         keyMesh = gltf.scene;
         keyMesh.scale.copy(CONFIG.SCALES.KEY); 
         keyMesh.position.copy(CONFIG.POSITIONS.KEY);
-        keyMesh.rotation.set(Math.PI/2, 0, 0); 
+        keyMesh.rotation.set(Math.PI/2, 0, 0);
+        keyWorldPosition.copy(CONFIG.POSITIONS.KEY); 
+        
+        // 👇 AHORA SÍ: Hacemos que la llave se pueda tocar y detectar
+        keyMesh.userData = { isKey: true };
+        collidableObjects.push(keyMesh);
+        
         scene.add(keyMesh);
     }, undefined, () => {
         const geometry = new THREE.SphereGeometry(0.1, 16, 16);
         const material = new THREE.MeshBasicMaterial({ color: 0xffd700 });
         keyMesh = new THREE.Mesh(geometry, material);
         keyMesh.position.copy(CONFIG.POSITIONS.KEY);
+        keyWorldPosition.copy(CONFIG.POSITIONS.KEY); 
+        
+        // 👇 Y lo mismo para el modelo fallback
+        keyMesh.userData = { isKey: true };
+        collidableObjects.push(keyMesh);
+        
         scene.add(keyMesh);
     });
 }

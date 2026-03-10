@@ -15,14 +15,14 @@ const DOWN = new THREE.Vector3(0, -1, 0);
 // ── SUELO: todo lo que el jugador puede pisar ─────────────────────────────────
 // Incluye escaleras para que el jugador pueda subir
 const FLOOR_WHITELIST = [
-    'floor',        // Floor, Floor_01
+    'floor',
     'house', 'home',
     'sidewalk', 'asphalt',
-    'ladders',      // Ladders, Ladders_01 — escaleras principales ✅
-    'ladder',       // Ladder, Ladder_01
+    'ladders',
+    'ladder',
     'brick', 'concrete', 'plaster', 'plasterwhite',
     'grass_soil', 'rocks', 'background',
-    'kitchen', 'stove', 'bathtub', 'garage_door',
+    'garage_door',
 ];
 
 // ── SIN COLISIÓN HORIZONTAL: decoración pequeña, geometría hueca, Y ESCALERAS ──
@@ -159,7 +159,7 @@ const GOFFSETS = [
 
 // MAX_STEP controla la altura máxima de escalón que el jugador puede subir
 // Ladders tiene peldaños de ~0.2m, ponemos 0.42 para subir con margen
-const MAX_STEP   = 0.50;  // cubre peldaños de 0.105 con margen amplio
+const MAX_STEP   = 0.22;  // escalones de Ladders miden 0.105 — con margen justo
 const GROUND_FAR = CONFIG.PLAYER.HEIGHT + 0.8;
 
 function getGroundY(floor, moveDir) {
@@ -180,7 +180,7 @@ function getGroundY(floor, moveDir) {
     // Raycast extra hacia adelante: detecta el escalón que tienes enfrente
     // antes de que tu cuerpo esté encima de él
     if (moveDir && moveDir.lengthSq() > 0.001) {
-        const probeOffsets = [0.20, 0.35]; // cuánto adelante miramos
+        const probeOffsets = [0.15, 0.25]; // cuánto adelante miramos
         for (const dist of probeOffsets) {
             const o = camera.position.clone()
                 .addScaledVector(moveDir, dist);

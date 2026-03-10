@@ -141,6 +141,22 @@ function loadHouse() {
             const isFoliage = n.includes('tree') || n.includes('plant') ||
                               n.includes('nature') || n.includes('bush');
 
+            // AGUA — material semitransparente azul oscuro
+            if (n.includes('water')) {
+                child.material = new THREE.MeshStandardMaterial({
+                    color: 0x1a3a4a,
+                    transparent: true,
+                    opacity: 0.75,
+                    roughness: 0.0,
+                    metalness: 0.3,
+                    depthWrite: false,
+                    side: THREE.DoubleSide,
+                });
+                child.receiveShadow = false;
+                child.castShadow   = false;
+                return;
+            }
+
             if (n.includes('glass') || n.includes('window') || n.includes('cristal')) {
                 child.material = new THREE.MeshStandardMaterial({
                     color: 0x000000, transparent: true, opacity: 0.25,
@@ -319,3 +335,4 @@ export function spawnModelForEditing(path) {
         transformControls.attach(model);
     });
 }
+

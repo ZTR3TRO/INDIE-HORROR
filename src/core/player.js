@@ -25,6 +25,13 @@ const FLOOR_WHITELIST = [
     'garage_door',
 ];
 
+// Objetos que NUNCA son suelo aunque el raycast los toque
+const FLOOR_BLACKLIST = [
+    'kitchen', 'stove', 'table', 'shelf', 'wardrobe',
+    'bed', 'armchair', 'sofa', 'couch', 'fridge',
+    'washer', 'bathtub', 'sink', 'toilet',
+];
+
 // ── SIN COLISIÓN HORIZONTAL: decoración pequeña, geometría hueca, Y ESCALERAS ──
 const NOCLIP_H = [
     'tree', 'bush', 'hedge', 'plant', 'flower', 'nature',
@@ -54,12 +61,13 @@ let _wall = null, _floor = null, _lastLen = 0;
 
 function rebuildCache() {
     _lastLen = collidableObjects.length;
-    // col_* = colliders invisibles → SIEMPRE en wall, NUNCA en floor
     _wall  = collidableObjects.filter(o =>
         (o.name || '').startsWith('col_') || !matchesAny(o.name, NOCLIP_H)
     );
     _floor = collidableObjects.filter(o =>
-        !(o.name || '').startsWith('col_') && matchesAny(o.name, FLOOR_WHITELIST)
+        !(o.name || '').startsWith('col_') &&
+        matchesAny(o.name, FLOOR_WHITELIST) &&
+        !matchesAny(o.name, FLOOR_BLACKLIST)
     );
 }
 
@@ -159,8 +167,8 @@ const GOFFSETS = [
 
 // MAX_STEP controla la altura máxima de escalón que el jugador puede subir
 // Ladders tiene peldaños de ~0.2m, ponemos 0.42 para subir con margen
-const MAX_STEP   = 0.22;  // escalones de Ladders miden 0.105 — con margen justo
-const GROUND_FAR = CONFIG.PLAYER.HEIGHT + 0.8;
+const MAX_STEP   = 0.50;  // escalón garaje = 0.41 + margen
+const GROUND_FAR = CONFIG.PLAYER.HEIGHT + 1.2;
 
 function getGroundY(floor, moveDir) {
     let best = null;
@@ -177,15 +185,27 @@ function getGroundY(floor, moveDir) {
         }
     }
 
-    // Raycast extra hacia adelante: detecta el escalón que tienes enfrente
-    // antes de que tu cuerpo esté encima de él
+    // Raycasts hacia adelante a distintas distancias
     if (moveDir && moveDir.lengthSq() > 0.001) {
-        const probeOffsets = [0.15, 0.25]; // cuánto adelante miramos
-        for (const dist of probeOffsets) {
-            const o = camera.position.clone()
-                .addScaledVector(moveDir, dist);
+        for (const dist of [0.15, 0.30, 0.45]) {
+            const o = camera.position.clone().addScaledVector(moveDir, dist);
             rc.set(o, DOWN);
             rc.far = GROUND_FAR;
+            const hits = rc.intersectObjects(floor, true);
+            if (hits.length > 0) {
+                const y = hits[0].point.y;
+                if (best === null || y > best) best = y;
+            }
+        }
+
+        // Raycast diagonal hacia adelante-abajo: detecta el borde del escalón
+        // cuando el jugador está justo enfrente pero aún no encima
+        const feetY = camera.position.y - CONFIG.PLAYER.HEIGHT;
+        for (const dist of [0.20, 0.40]) {
+            const origin = camera.position.clone().addScaledVector(moveDir, dist);
+            origin.y = feetY + 0.55; // desde la altura de las rodillas
+            rc.set(origin, DOWN);
+            rc.far = 0.65; // solo busca hasta 65cm abajo
             const hits = rc.intersectObjects(floor, true);
             if (hits.length > 0) {
                 const y = hits[0].point.y;

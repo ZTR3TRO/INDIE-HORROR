@@ -2,137 +2,283 @@ import * as THREE from 'three';
 import { controls, camera } from './world.js';
 import { CONFIG } from '../config.js';
 import { collidableObjects } from '../scenes/level.js';
-
-// 👇 NUEVO: Importamos el sistema de audio
 import { playSound, stopSound } from './audio.js';
 
 export let debugInfo = { speed: 0, grounded: false, velocityY: 0 };
 
 let verticalVelocity = 0;
+let smoothY = null;
 
-// Configuración de colisiones
-const raycaster = new THREE.Raycaster();
-const collisionDistance = 0.5; // Distancia para chocar con paredes
+const rc = new THREE.Raycaster();
+const DOWN = new THREE.Vector3(0, -1, 0);
 
-export function updatePlayer(delta, input) {
-    // Si no tenemos el control, no hacemos nada
-    if (!controls.isLocked && !input.keys.flyMode) {
-        stopSound('pasos'); // Asegurarnos de que no suene si abrimos un menú o perdemos el control
-        return;
+// ── SUELO: todo lo que el jugador puede pisar ─────────────────────────────────
+// Incluye escaleras para que el jugador pueda subir
+const FLOOR_WHITELIST = [
+    'floor',        // Floor, Floor_01
+    'house', 'home',
+    'sidewalk', 'asphalt',
+    'ladders',      // Ladders, Ladders_01 — escaleras principales ✅
+    'ladder',       // Ladder, Ladder_01
+    'brick', 'concrete', 'plaster', 'plasterwhite',
+    'grass_soil', 'rocks', 'background',
+    'kitchen', 'stove', 'bathtub', 'garage_door',
+];
+
+// ── SIN COLISIÓN HORIZONTAL: decoración pequeña, geometría hueca, Y ESCALERAS ──
+const NOCLIP_H = [
+    'tree', 'bush', 'hedge', 'plant', 'flower', 'nature',
+    'lamppost', 'focus', 'glass', 'window', 'water',
+    'railing',       // railings de escaleras — huecas
+    'shelving',      // rejilla hueca
+    'ladders',       // Ladders — son pisables, no paredes ✅
+    'ladder',        // Ladder
+    'dish', 'plate', 'cup', 'mug', 'vaso', 'bottle', 'can',
+    'book', 'magazine', 'soap', 'shampoo', 'toothbrush', 'toothpaste',
+    'toilet_paper', 'alarm_clock', 'radio', 'gadget', 'control', 'chemical',
+    'cake', 'flan', 'pizza', 'chicken', 'meat', 'cereal', 'ice_cream', 'fried', 'milk',
+    'paint_pot', 'palette', 'petrol_can', 'basket', 'carrier',
+    'watering_can', 'hose', 'mop', 'broom', 'rake', 'shovel', 'tumbler',
+    'blender', 'toaster', 'coffee_maker', 'cooking_pot', 'pot_lid', 'sarten', 'cutlery',
+    'desk_lamp', 'ceiling_fan', 'frame', 'flowers', 'garbage', 'trash_can',
+    'plastic_boat', 'mower', 'light_switch', 'softener', 'paper_roll',
+    'hand_soap', 'deodorant', 'lamp_01',
+];
+
+function matchesAny(name, list) {
+    const n = (name || '').toLowerCase();
+    return list.some(kw => n.includes(kw));
+}
+
+let _wall = null, _floor = null, _lastLen = 0;
+
+function rebuildCache() {
+    _lastLen = collidableObjects.length;
+    // col_* = colliders invisibles → SIEMPRE en wall, NUNCA en floor
+    _wall  = collidableObjects.filter(o =>
+        (o.name || '').startsWith('col_') || !matchesAny(o.name, NOCLIP_H)
+    );
+    _floor = collidableObjects.filter(o =>
+        !(o.name || '').startsWith('col_') && matchesAny(o.name, FLOOR_WHITELIST)
+    );
+}
+
+function getWall()  { if (!_wall  || collidableObjects.length !== _lastLen) rebuildCache(); return _wall;  }
+function getFloor() { if (!_floor || collidableObjects.length !== _lastLen) rebuildCache(); return _floor; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COLISIÓN HORIZONTAL — separación por eje (estilo Quake/Source)
+//
+// Mueve X → revierte si choca
+// Mueve Z → revierte si choca
+// → El jugador se desliza a lo largo de paredes en lugar de quedarse pegado
+// ─────────────────────────────────────────────────────────────────────────────
+const BODY_R = 0.30;
+
+// 3 alturas: pecho, cadera, rodillas
+const BODY_H_RATIOS = [0.12, 0.42, 0.70];
+
+const DIR = {
+    XP: new THREE.Vector3( 1, 0, 0),
+    XN: new THREE.Vector3(-1, 0, 0),
+    ZP: new THREE.Vector3( 0, 0, 1),
+    ZN: new THREE.Vector3( 0, 0,-1),
+};
+
+// Diagonales para atrapar esquinas de camas/mesas
+const DIAGS = [
+    new THREE.Vector3( 1, 0,  1).normalize(),
+    new THREE.Vector3(-1, 0,  1).normalize(),
+    new THREE.Vector3( 1, 0, -1).normalize(),
+    new THREE.Vector3(-1, 0, -1).normalize(),
+];
+
+function blocked(dir, wall) {
+    const fy = camera.position.y - CONFIG.PLAYER.HEIGHT;
+    for (const r of BODY_H_RATIOS) {
+        const o = new THREE.Vector3(
+            camera.position.x,
+            fy + CONFIG.PLAYER.HEIGHT * r,
+            camera.position.z
+        );
+        rc.set(o, dir);
+        rc.far = BODY_R;
+        if (rc.intersectObjects(wall, true).length > 0) return true;
     }
+    return false;
+}
 
-    // --- 1. CALCULAR DIRECCIÓN ---
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-    forward.y = 0; // Anular altura para no volar mirando arriba
-    forward.normalize();
-
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
-    right.y = 0;
-    right.normalize();
-
-    // --- 2. INPUT DE TECLAS ---
-    const speed = input.keys.run ? CONFIG.PLAYER.SPEED.RUN : CONFIG.PLAYER.SPEED.WALK;
-    const currentSpeed = input.keys.flyMode ? CONFIG.PLAYER.SPEED.FLY : speed;
-
-    const move = new THREE.Vector3(0, 0, 0);
-    if (input.keys.forward) move.add(forward);
-    if (input.keys.backward) move.sub(forward);
-    if (input.keys.right) move.add(right);
-    if (input.keys.left) move.sub(right);
-
-    // --- 3. MOVER CON COLISIONES ---
-    if (move.length() > 0) {
-        move.normalize();
-        
-        // Calculamos cuánto nos queremos mover
-        const displacement = move.clone().multiplyScalar(currentSpeed * delta);
-        
-        // Si no volamos, verificamos paredes
-        if (!input.keys.flyMode && collidableObjects.length > 0) {
-            const newPosition = camera.position.clone().add(displacement);
-            
-            // --- COLISIÓN EJE X ---
-            raycaster.set(camera.position, new THREE.Vector3(Math.sign(displacement.x), 0, 0));
-            raycaster.far = Math.abs(displacement.x) + collisionDistance;
-            const hitsX = raycaster.intersectObjects(collidableObjects, true);
-            
-            // Si NO hay pared en X, nos movemos
-            if (hitsX.length === 0) {
-                camera.position.x = newPosition.x;
-            }
-            
-            // --- COLISIÓN EJE Z ---
-            raycaster.set(camera.position, new THREE.Vector3(0, 0, Math.sign(displacement.z)));
-            raycaster.far = Math.abs(displacement.z) + collisionDistance;
-            const hitsZ = raycaster.intersectObjects(collidableObjects, true);
-            
-            // Si NO hay pared en Z, nos movemos
-            if (hitsZ.length === 0) {
-                camera.position.z = newPosition.z;
-            }
-        } else {
-            // Si estamos volando, mover libremente
-            camera.position.add(displacement);
-        }
-        
-        debugInfo.speed = currentSpeed;
-    } else {
-        debugInfo.speed = 0;
+function moveWithCollision(dx, dz, wall) {
+    // Eje X
+    if (Math.abs(dx) > 0.00005) {
+        camera.position.x += dx;
+        if (blocked(dx > 0 ? DIR.XP : DIR.XN, wall))
+            camera.position.x -= dx;
     }
-
-    // --- 4. GRAVEDAD Y SUELO ---
-    if (input.keys.flyMode) {
-        verticalVelocity = 0;
-        if (input.keys.up) camera.position.y += currentSpeed * delta;
-        if (input.keys.down) camera.position.y -= currentSpeed * delta;
-        debugInfo.grounded = false;
-    } else {
-        // Raycast hacia abajo para encontrar el piso
-        raycaster.set(camera.position, new THREE.Vector3(0, -1, 0));
-        raycaster.far = 2.0; // Buscar suelo cerca
-        
-        const groundHits = raycaster.intersectObjects(collidableObjects, true);
-        
-        if (groundHits.length > 0) {
-            const groundY = groundHits[0].point.y + CONFIG.PLAYER.HEIGHT;
-            
-            // Si estamos cayendo o cerca del suelo
-            if (camera.position.y > groundY) {
-                verticalVelocity -= CONFIG.PLAYER.GRAVITY * delta;
-                camera.position.y += verticalVelocity * delta;
-                
-                // Si nos pasamos y atravesamos el suelo, corregir
-                if (camera.position.y < groundY) {
-                    camera.position.y = groundY;
-                    verticalVelocity = 0;
-                    debugInfo.grounded = true;
-                } else {
-                    debugInfo.grounded = false;
+    // Eje Z
+    if (Math.abs(dz) > 0.00005) {
+        camera.position.z += dz;
+        if (blocked(dz > 0 ? DIR.ZP : DIR.ZN, wall))
+            camera.position.z -= dz;
+    }
+    // Diagonales: empuje suave para esquinas de mesas y camas
+    const fy = camera.position.y - CONFIG.PLAYER.HEIGHT;
+    for (const d of DIAGS) {
+        for (const r of BODY_H_RATIOS) {
+            const o = new THREE.Vector3(
+                camera.position.x,
+                fy + CONFIG.PLAYER.HEIGHT * r,
+                camera.position.z
+            );
+            rc.set(o, d);
+            rc.far = BODY_R;
+            const hits = rc.intersectObjects(wall, true);
+            if (hits.length > 0) {
+                const pen = BODY_R - hits[0].distance;
+                if (pen > 0.002) {
+                    camera.position.x -= d.x * pen * 0.6;
+                    camera.position.z -= d.z * pen * 0.6;
                 }
-            } else {
-                // Estamos en el suelo
-                camera.position.y = groundY;
+                break;
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DETECCIÓN DE SUELO — cuadrícula 3×3 de raycasts
+// ─────────────────────────────────────────────────────────────────────────────
+const S = 0.14;
+const GOFFSETS = [
+    new THREE.Vector3(0,0,0),
+    new THREE.Vector3( S,0, 0), new THREE.Vector3(-S,0, 0),
+    new THREE.Vector3( 0,0, S), new THREE.Vector3( 0,0,-S),
+    new THREE.Vector3( S,0, S), new THREE.Vector3(-S,0, S),
+    new THREE.Vector3( S,0,-S), new THREE.Vector3(-S,0,-S),
+];
+
+// MAX_STEP controla la altura máxima de escalón que el jugador puede subir
+// Ladders tiene peldaños de ~0.2m, ponemos 0.42 para subir con margen
+const MAX_STEP   = 0.50;  // cubre peldaños de 0.105 con margen amplio
+const GROUND_FAR = CONFIG.PLAYER.HEIGHT + 0.8;
+
+function getGroundY(floor, moveDir) {
+    let best = null;
+
+    // Cuadrícula base 3×3
+    for (const off of GOFFSETS) {
+        const o = camera.position.clone().add(off);
+        rc.set(o, DOWN);
+        rc.far = GROUND_FAR;
+        const hits = rc.intersectObjects(floor, true);
+        if (hits.length > 0) {
+            const y = hits[0].point.y;
+            if (best === null || y > best) best = y;
+        }
+    }
+
+    // Raycast extra hacia adelante: detecta el escalón que tienes enfrente
+    // antes de que tu cuerpo esté encima de él
+    if (moveDir && moveDir.lengthSq() > 0.001) {
+        const probeOffsets = [0.20, 0.35]; // cuánto adelante miramos
+        for (const dist of probeOffsets) {
+            const o = camera.position.clone()
+                .addScaledVector(moveDir, dist);
+            rc.set(o, DOWN);
+            rc.far = GROUND_FAR;
+            const hits = rc.intersectObjects(floor, true);
+            if (hits.length > 0) {
+                const y = hits[0].point.y;
+                if (best === null || y > best) best = y;
+            }
+        }
+    }
+
+    return best;
+}
+
+// ── updatePlayer ──────────────────────────────────────────────────────────────
+export function updatePlayer(delta, input) {
+    if (!controls.isLocked && !input.keys.flyMode) {
+        stopSound('pasos'); return;
+    }
+
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+    fwd.y = 0; fwd.normalize();
+    const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+    rgt.y = 0; rgt.normalize();
+
+    const spd  = input.keys.run ? CONFIG.PLAYER.SPEED.RUN : CONFIG.PLAYER.SPEED.WALK;
+    const spd2 = input.keys.flyMode ? CONFIG.PLAYER.SPEED.FLY : spd;
+
+    const move = new THREE.Vector3();
+    if (input.keys.forward)  move.add(fwd);
+    if (input.keys.backward) move.sub(fwd);
+    if (input.keys.right)    move.add(rgt);
+    if (input.keys.left)     move.sub(rgt);
+    if (move.length() > 0) move.normalize();
+
+    debugInfo.speed = move.length() > 0 ? spd2 : 0;
+
+    // ── Fly ──────────────────────────────────────────────────────────────────
+    if (input.keys.flyMode) {
+        camera.position.addScaledVector(move, spd2 * delta);
+        if (input.keys.up)   camera.position.y += spd2 * delta;
+        if (input.keys.down) camera.position.y -= spd2 * delta;
+        verticalVelocity = 0; smoothY = null;
+        debugInfo.grounded = false; debugInfo.velocityY = 0;
+        playSound('pasos'); return;
+    }
+
+    // ── Movimiento horizontal con colisión ────────────────────────────────────
+    moveWithCollision(move.x * spd2 * delta, move.z * spd2 * delta, getWall());
+
+    // ── Gravedad y suelo ──────────────────────────────────────────────────────
+    const groundY = getGroundY(getFloor(), move);
+
+    if (groundY !== null) {
+        const feetY   = camera.position.y - CONFIG.PLAYER.HEIGHT;
+        const diff    = groundY - feetY;   // positivo = suelo más alto que pies
+        const targetY = groundY + CONFIG.PLAYER.HEIGHT;
+
+        if (diff <= MAX_STEP && diff >= -0.15) {
+            // Suelo alcanzable (plano o escalón)
+            if (smoothY === null) smoothY = camera.position.y;
+
+            // Subir escalón: lerp lento. Suelo plano: lerp rápido (sin pop)
+            const lerpSpeed = diff > 0.04 ? 12 : 25;
+            smoothY = THREE.MathUtils.lerp(smoothY, targetY, Math.min(delta * lerpSpeed, 1));
+            camera.position.y = smoothY;
+            verticalVelocity  = 0;
+            debugInfo.grounded = true;
+
+        } else {
+            // Caída o salto de obstáculo alto
+            smoothY = null;
+            verticalVelocity -= CONFIG.PLAYER.GRAVITY * delta;
+            camera.position.y += verticalVelocity * delta;
+
+            if (camera.position.y - CONFIG.PLAYER.HEIGHT <= groundY) {
+                camera.position.y = targetY;
+                smoothY = targetY;
                 verticalVelocity = 0;
                 debugInfo.grounded = true;
+            } else {
+                debugInfo.grounded = false;
             }
-        } else {
-            // Si no detecta suelo (ej. saltando hueco o bug), aplicar gravedad simple
-            if (camera.position.y > -10) { 
-                verticalVelocity -= CONFIG.PLAYER.GRAVITY * delta;
-                camera.position.y += verticalVelocity * delta;
-            }
-            debugInfo.grounded = false;
         }
+    } else {
+        // Sin suelo detectado: caída libre
+        smoothY = null;
+        if (camera.position.y > -10) {
+            verticalVelocity -= CONFIG.PLAYER.GRAVITY * delta;
+            camera.position.y += verticalVelocity * delta;
+        }
+        debugInfo.grounded = false;
     }
 
     debugInfo.velocityY = verticalVelocity;
 
-    // --- 5. LÓGICA DE SONIDO DE PASOS (NUEVO) ---
-    // Si nos estamos moviendo (speed > 0), estamos tocando el piso, y no estamos volando
-    if (debugInfo.speed > 0 && debugInfo.grounded && !input.keys.flyMode) {
-        playSound('pasos');
-    } else {
-        // Si nos detenemos, saltamos, o volamos, cortamos el sonido
-        stopSound('pasos');
-    }
+    if (debugInfo.speed > 0 && debugInfo.grounded) playSound('pasos');
+    else stopSound('pasos');
 }

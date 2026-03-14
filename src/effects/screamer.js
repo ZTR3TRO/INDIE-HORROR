@@ -127,6 +127,15 @@ export function updateShadow(delta) {
     }
 }
 
+// ── Aparece parada, sin moverse aún ────────────────────────────────────────
+export function spawnShadowStill() {
+    if (!shadowEntity) return;
+    shadowEntity.position.set(1.809, 0.0, 18.0);
+    shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
+    shadowEntity.scale.setScalar(0.9);
+    shadowEntity.visible = true;
+}
+
 // ── Trigger — inicia la secuencia del jumpscare ─────────────────────────────
 export function triggerScreamer() {
     if (!shadowEntity) {
@@ -138,9 +147,13 @@ export function triggerScreamer() {
         setTimeout(() => { f.remove(); showCredits(); }, 2800);
         return;
     }
-    shadowEntity.position.set(1.809, 0.0, 18.0);
-    shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
-    shadowEntity.visible = true;
+    // Si spawnShadowStill ya la posicionó, solo arrancar el approach
+    // Si no estaba visible, posicionarla ahora
+    if (!shadowEntity.visible) {
+        shadowEntity.position.set(1.809, 0.0, 18.0);
+        shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
+        shadowEntity.visible = true;
+    }
     shadowApproaching = true;
 }
 

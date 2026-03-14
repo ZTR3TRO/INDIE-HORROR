@@ -14,7 +14,7 @@ import { initStoneUI, showStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 import { DIALOGUES, playDialogueSequence } from './data/dialogues.js';
-import { initShadow, updateShadow, triggerScreamer } from './effects/screamer.js';
+import { initShadow, updateShadow, triggerScreamer, spawnShadowStill } from './effects/screamer.js';
 import { initEnding } from './scenes/ending.js';
 
 initWorld(); 
@@ -57,6 +57,7 @@ let tutorialShown = false;
 let powerOutageCall = false;      
 let powerOutageAnswered = false;  
 let powerRestored = false;
+let fuseboxUsed   = false;  // true después del colapso — nunca vuelve a activarse
 let isLaptopOpen = false;
 let isNumpadOpen = false; 
 let isBookOpen = false; 
@@ -317,7 +318,15 @@ input.actions.onInteract = () => {
             const dist = camera.position.distanceTo(door.position);
             if (dist < 2.5 && !door.userData.isOpen) {
                 toggleDoor(door);
-                setTimeout(() => { triggerScreamer(); }, 1500);
+                // Sombra aparece parada en la oscuridad
+                setTimeout(() => {
+                    spawnShadowStill();
+                    setTimeout(() => {
+                        ui.showSubtitle("Zare: '¿Qué... qué es eso?'", 3000);
+                    }, 800);
+                    // La entidad "despierta" y corre
+                    setTimeout(() => { triggerScreamer(); }, 4000);
+                }, 1200);
             }
         }
         return;
@@ -497,7 +506,11 @@ input.actions.onInteract = () => {
         }
 
         // ⚡ CAJA DE FUSIBLES
-        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 2.5 && checkLineOfSight(CONFIG.POSITIONS.FUSEBOX)) {
+        if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 1.5 && checkLineOfSight(CONFIG.POSITIONS.FUSEBOX)) {
+            if (fuseboxUsed) {
+                ui.showSubtitle('⚠️ La caja está quemada. Ya no funciona.', 3000);
+                return;
+            }
             if (batteriesCollected === 3) {
                 if (!powerRestored) {
                     powerRestored = true;
@@ -529,7 +542,8 @@ input.actions.onInteract = () => {
 
                     setTimeout(() => {
                         clearInterval(blackoutLoop); 
-                        powerRestored = false; 
+                        powerRestored = false;
+                        fuseboxUsed   = true;  // sellada — no vuelve a activarse
                         houseLights.forEach(item => {
                             item.light.intensity = 0;
                             if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
@@ -562,7 +576,7 @@ input.actions.onInteract = () => {
 
             if (isMainDoor) {
                 if (finalCallAnswered) { 
-                    playSound('puerta_bloqueda'); 
+                    playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
                     if (!isNumpadOpen) {
                         isNumpadOpen = true;
@@ -574,7 +588,7 @@ input.actions.onInteract = () => {
                     }
                     return;
                 } else {
-                    playSound('puerta_bloqueda'); 
+                    playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: 'Está lloviendo demasiado fuerte, no saldré ahora.'", 3000);
                     return;
                 }
@@ -582,7 +596,7 @@ input.actions.onInteract = () => {
 
             if (isGarageDoor && !door.userData.isOpen) {
                 if (!hasKey) { 
-                    playSound('puerta_bloqueda'); 
+                    playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: 'Maldición, tiene candado... necesito buscar la llave.'", 4000); 
                     setTimeout(() => {
                         ui.showSubtitle("Misión: Buscar LLAVE en la casa para abrir el GARAJE", 5000);
@@ -731,8 +745,8 @@ document.addEventListener('keydown', (e) => {
         return;
     }
 
-    // DEV: Shift+E — skip directo al ending (simula numpadSuccess)
-    if (e.shiftKey && key === 'e') {
+    // DEV: Shift+R — skip directo al ending (simula numpadSuccess)
+    if (e.shiftKey && key === 'r') {
         hasKey = true;
         batteriesCollected = 3;
         finalCallTriggered = true;

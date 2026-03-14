@@ -85,6 +85,10 @@ function buildColliderForNode(node) {
     const center = new THREE.Vector3();
     worldBox.getSize(size);
     worldBox.getCenter(center);
+    // Forzar grosor mínimo de 0.25 en dimensiones casi planas (ej: vidrios)
+    if (size.x < 0.25) size.x = 0.25;
+    if (size.y < 0.25) size.y = 0.25;
+    if (size.z < 0.25) size.z = 0.25;
     if (size.x < 0.05 || size.z < 0.05) return;
 
     const vizMat = DEBUG_COLLIDERS
@@ -110,6 +114,46 @@ export function initLevel() {
     loadKey();
     loadLaptop();
     loadRitualStone();
+    buildManualColliders();
+}
+
+// ── Colliders manuales precisos ───────────────────────────────────────────────
+// Para objetos que el sistema automático no puede manejar bien:
+// pasamanos (huecos entre barrotes) y ventanas (planos de grosor 0)
+function buildManualColliders() {
+    const mat = new THREE.MeshBasicMaterial({ visible: false });
+
+    function addWall(name, cx, cy, cz, sx, sy, sz) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+        m.name = 'col_' + name;
+        m.position.set(cx, cy, cz);
+        scene.add(m);
+        collidableObjects.push(m);
+    }
+
+    // ── Pasamanos escalera inferior (railing_ladders) ──────────────────────
+    // Corre de X≈4.8 a X≈2.7, Y≈2.1, Z≈-7.4 — pared delgada en Z
+    addWall('railing_lower', 3.75, 2.4, -7.35,   2.4, 1.6, 0.2);
+
+    // ── Pasamanos escalera superior (railing_ladders_01) ──────────────────
+    // Corre de X≈2.7 a X≈1.4, Y≈3.4, Z≈-7.4
+    addWall('railing_upper', 2.05, 3.5, -7.40,   1.5, 1.2, 0.2);
+
+    // ── Pasamanos 2do piso (railing_ladders_01) — forma de L ──────────────
+    // Tramo en Z: X≈4.8, de Z≈-6.4 a Z≈-7.4
+    addWall('railing_top_z', 4.84, 5.4, -6.9,   0.2, 1.2, 1.1);
+    // Tramo en X: Z≈-7.38, de X≈4.8 a X≈3.1
+    addWall('railing_top_x', 3.95, 5.4, -7.38,  1.8, 1.2, 0.2);
+
+    // ── Ventanas 1er piso ──────────────────────────────────────────────────
+    // Glass_006 pos: 6.36, 1.93, 0.58
+    addWall('glass_006', 6.36, 1.93, 0.58,   0.2, 2.0, 1.8);
+
+    // ── Ventanas 2do piso ──────────────────────────────────────────────────
+    // Glass_008 pos: 5.41, 5.46, 0.58
+    addWall('glass_008', 5.41, 5.46, 0.58,   0.2, 2.0, 1.8);
+    // Glass_001 pos: 5.42, 5.38, -13.70
+    addWall('glass_001', 5.42, 5.38, -13.70,  0.2, 2.0, 1.8);
 }
 
 // ─── Piedras rituales cerca del lago ─────────────────────────────────────────

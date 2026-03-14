@@ -41,7 +41,7 @@ export function initAudio() {
     loadSound('objeto', 'assets/sounds/objeto.mp3', false, 1.2); 
     
     // 👇 LOS DOS SONIDOS NUEVOS
-    loadSound('puerta_bloqueda', 'assets/sounds/puerta_bloqueda.mp3', false, 1.5); 
+    loadSound('puerta_bloqueada', 'assets/sounds/puerta_bloqueada.mp3', false, 1.5); 
     loadSound('tocando', 'assets/sounds/tocando.mp3', false, 1.5); 
 }
 

@@ -25,11 +25,6 @@ export const CONFIG = {
         UV_LAMP: new THREE.Vector3(7.30, 4.66, -10.36), // cuarto de Zare
 
         // Ending cinemática — coordenadas exactas del editor
-        DOOR_VIEW: new THREE.Vector3(2.01, 2.11, -3.40), // estática mirando la puerta
-        DOOR_EXIT: new THREE.Vector3(2.09, 2.11, -1.63), // avance suave hacia afuera
-        WAKE_END:  new THREE.Vector3(4.75, 5.50, -0.57), // despertar junto a la cama
-
-        // Ending
         DOOR_VIEW:  new THREE.Vector3(4.50, 5.33, -1.80), // cámara estática mirando la puerta
         DOOR_EXIT:  new THREE.Vector3(2.49, 5.33, -1.66), // punto justo frente a la puerta
         WAKE_END:   new THREE.Vector3(4.75, 5.33, -0.57), // despertar — misma que SIT
@@ -44,8 +39,6 @@ export const CONFIG = {
         SPAWN: new THREE.Euler(0, -2.0, 0),
         PHONE: new THREE.Euler(1.68, 0.03, 0.64),
         UV_LAMP: new THREE.Euler(0.00, 0.80, 0.00), // ligeramente girada
-        DOOR_VIEW: new THREE.Euler(0.00, 0.00, 0.00), // mirando hacia -Z (la puerta)
-        WAKE_END:  new THREE.Euler(0.00, -2.00, 0.00),  // mirando al frente desde la cama
         DOOR_VIEW: new THREE.Euler(0.00, Math.PI, 0.00), // mirando hacia la puerta (Z negativo)
         WAKE_END:  new THREE.Euler(0.10, -2.0, 0.00),   // mirando al frente desde la cama
         FUSEBOX: new THREE.Euler(0.00, 1.54, 0.00),

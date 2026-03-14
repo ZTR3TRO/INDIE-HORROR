@@ -30,13 +30,17 @@ const FLOOR_BLACKLIST = [
     'kitchen', 'stove', 'table', 'shelf', 'wardrobe',
     'bed', 'armchair', 'sofa', 'couch', 'fridge',
     'washer', 'bathtub', 'sink', 'toilet',
+    'railing',  // railing_ladders no es piso
+    'col_railing',  // collider generado del pasamanos tampoco
+    'glass', 'window', 'cristal',  // vidrios no son piso
+    'col_glass',  // collider de vidrio tampoco
 ];
 
 // ── SIN COLISIÓN HORIZONTAL: decoración pequeña, geometría hueca, Y ESCALERAS ──
 const NOCLIP_H = [
     'tree', 'bush', 'hedge', 'plant', 'flower', 'nature',
     'lamppost', 'focus', 'glass', 'window', 'water',
-    'railing',       // railings de escaleras — huecas
+    'railing',       // pasamanos — geometría con huecos, no bloquear movimiento
     'shelving',      // rejilla hueca
     'ladders',       // Ladders — son pisables, no paredes ✅
     'ladder',        // Ladder
@@ -81,10 +85,11 @@ function getFloor() { if (!_floor || collidableObjects.length !== _lastLen) rebu
 // Mueve Z → revierte si choca
 // → El jugador se desliza a lo largo de paredes en lugar de quedarse pegado
 // ─────────────────────────────────────────────────────────────────────────────
-const BODY_R = 0.30;
+const BODY_R = 0.38;
 
-// 3 alturas: pecho, cadera, rodillas
-const BODY_H_RATIOS = [0.12, 0.42, 0.70];
+// 4 alturas: pecho, cadera, rodillas + nivel de ojos (0.93 ≈ justo bajo la cámara)
+// El ray en 0.93 es clave para ventanas del 2do piso que quedan por encima de los demás
+const BODY_H_RATIOS = [0.12, 0.42, 0.70, 0.93];
 
 const DIR = {
     XP: new THREE.Vector3( 1, 0, 0),
@@ -116,17 +121,40 @@ function blocked(dir, wall) {
     return false;
 }
 
+// Caja del jugador en XZ — detecta solapamiento con objetos delgados/diagonales
+// que los raycasts direccionales pueden esquivar
+// Solo se comprueba contra col_glass_* y col_railing_* para no afectar el rendimiento
+const _playerBox = new THREE.Box3();
+const _objBox    = new THREE.Box3();
+
+function overlapsWall(wall) {
+    const fy = camera.position.y - CONFIG.PLAYER.HEIGHT;
+    _playerBox.set(
+        new THREE.Vector3(camera.position.x - BODY_R, fy + 0.1, camera.position.z - BODY_R),
+        new THREE.Vector3(camera.position.x + BODY_R, fy + CONFIG.PLAYER.HEIGHT * 0.95, camera.position.z + BODY_R)
+    );
+    for (const obj of wall) {
+        const n = obj.name || '';
+        // Solo colliders especiales: glass y railing
+        if (!n.startsWith('col_glass') && !n.startsWith('col_railing')) continue;
+        if (!obj.geometry) continue;
+        _objBox.setFromObject(obj);
+        if (_playerBox.intersectsBox(_objBox)) return true;
+    }
+    return false;
+}
+
 function moveWithCollision(dx, dz, wall) {
-    // Eje X
+    // Eje X — raycast + overlap fallback
     if (Math.abs(dx) > 0.00005) {
         camera.position.x += dx;
-        if (blocked(dx > 0 ? DIR.XP : DIR.XN, wall))
+        if (blocked(dx > 0 ? DIR.XP : DIR.XN, wall) || overlapsWall(wall))
             camera.position.x -= dx;
     }
-    // Eje Z
+    // Eje Z — raycast + overlap fallback
     if (Math.abs(dz) > 0.00005) {
         camera.position.z += dz;
-        if (blocked(dz > 0 ? DIR.ZP : DIR.ZN, wall))
+        if (blocked(dz > 0 ? DIR.ZP : DIR.ZN, wall) || overlapsWall(wall))
             camera.position.z -= dz;
     }
     // Diagonales: empuje suave para esquinas de mesas y camas

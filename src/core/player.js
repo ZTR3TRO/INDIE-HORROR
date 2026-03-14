@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { controls, camera } from './world.js';
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../data/config.js';
 import { collidableObjects } from '../scenes/level.js';
 import { playSound, stopSound } from './audio.js';
 

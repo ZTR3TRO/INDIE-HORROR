@@ -1,19 +1,21 @@
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { CONFIG } from './data/config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
 import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, ritualStoneMesh, uvLampMesh, uvBloodMark, loadUVLamp, loadUVBloodMark, animateUVLamp, setUVMarkVisible } from './scenes/level.js';
-import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly } from './inventoryUI.js';
+import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly } from './ui/inventoryUI.js';
 import { updatePlayer, debugInfo } from './core/player.js'; 
-import { initUI, ui } from './ui.js';            
-import { initLaptop, toggleLaptopUI } from './laptopUI.js'; 
-import { initNumpad, toggleNumpadUI } from './numpadUI.js'; 
-import { initBook, toggleBookUI } from './bookUI.js'; 
-import { initStoneUI, showStoneUI, hideStoneUI } from './stoneUI.js';
+import { initUI, ui } from './ui/ui.js';            
+import { initLaptop, toggleLaptopUI } from './ui/laptopUI.js'; 
+import { initNumpad, toggleNumpadUI } from './ui/numpadUI.js'; 
+import { initBook, toggleBookUI } from './ui/bookUI.js'; 
+import { initStoneUI, showStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
-import { DIALOGUES, playDialogueSequence } from './dialogues.js';
+import { DIALOGUES, playDialogueSequence } from './data/dialogues.js';
+import { initShadow, updateShadow, triggerScreamer } from './effects/screamer.js';
+import { initEnding } from './scenes/ending.js';
 
 initWorld(); 
 initLights(); 
@@ -27,6 +29,7 @@ createRain();
 initInventoryUI();
 loadUVLamp();
 loadUVBloodMark();
+initShadow();
 
 initStoneUI(() => {
     ui.showSubtitle("Zare: '...¿Qué significa este número?'", 3000);
@@ -34,6 +37,15 @@ initStoneUI(() => {
 
 const input = new InputManager();
 const clock = new THREE.Clock();
+
+// Inicializar ending — escucha numpadSuccess y maneja toda la cinemática final
+initEnding({
+    getGameState: () => gameState,
+    setGameState: (s) => { gameState = s; },
+    getUVMode: () => uvMode,
+    setUVMode: (m) => { uvMode = m; },
+    input,
+});
 
 let gameState = 'START';
 let stateTimer = 0;
@@ -122,6 +134,7 @@ function animate() {
 
     animateRain();
     animateExplosion(delta);
+    updateShadow(delta);
     if (scene.userData.endingUpdate) scene.userData.endingUpdate(delta);
 
     const debugRay = new THREE.Raycaster();
@@ -757,249 +770,5 @@ document.addEventListener('keydown', (e) => {
         }
     }
 });
-
-// ── ENDING: numpad correcto ─────────────────────────────────
-document.addEventListener('numpadSuccess', () => {
-    if (endingTriggered) return;
-    endingTriggered = true;
-
-    toggleNumpadUI(false);
-    isNumpadOpen = false;
-    controls.unlock();
-    gameState = 'ENDING_CINEMATIC';
-
-    // Posiciones exactas sacadas del editor
-    const camStart = new THREE.Vector3(2.01, 2.11, -3.40); // estática mirando puerta
-    const camEnd   = new THREE.Vector3(2.09, 2.11, -1.63); // avance suave hacia afuera
-
-    // Punto B capturado con editor — inicio desde posición actual del jugador
-    const posA = camera.position.clone();   // desde donde está el jugador
-    const rotA = camera.rotation.clone();   // rotación actual del jugador
-    const posB = new THREE.Vector3(2.041, 2.106, -0.373);
-    const rotB = new THREE.Euler(-3.118, -0.034, -3.141); // mirando afuera
-    const rotC = new THREE.Euler(-3.118, 0.65, -3.141);   // giro más pronunciado en B
-
-    const WAIT_A   = 3.0;  // segundos estático en A (donde está el jugador)
-    const TRAVEL   = 5.0;  // segundos viajando de A a B
-    const WAIT_B   = 4.0;  // segundos en B viendo el exterior + diálogo
-    const blackoutTime = (WAIT_A + TRAVEL + WAIT_B) * 1000;
-
-    // ── FASE 2: Puerta se abre a los 1.5s + postes de luz se encienden ──
-    setTimeout(() => {
-        const mainDoor = scene.getObjectByName('Door');
-        if (mainDoor) toggleDoor(mainDoor);
-        playSound('puerta_abierta');
-
-        // Postes — usar el array streetLights ya configurado en level.js
-        streetLights.forEach(item => {
-            item.light.intensity = 8.0;
-            item.mesh.material.emissiveIntensity = 3.0;
-        });
-    }, 1500);
-
-    // ── FASE 3: Avance suave de A a B + luz gradual + giro en B ──
-    let moveTimer = 0;
-    let lightTimer = 0;
-    let lightDone = false;
-    const lightStart = 1.8;
-    const lightDur   = 8.0;  // luz sube lento — 8 segundos de 0 a 100
-    let dialogShown = false;
-
-    scene.userData.endingUpdate = (delta) => {
-        if (gameState !== 'ENDING_CINEMATIC') { scene.userData.endingUpdate = null; return; }
-        moveTimer += delta;
-
-        // Luz gradual
-        if (moveTimer >= lightStart && !lightDone) {
-            lightTimer += delta;
-            const lt = Math.min(lightTimer / lightDur, 1.0);
-            ambientLight.intensity = lt * 0.08;
-            houseLights.forEach(item => {
-                item.light.intensity = lt * 1.2;
-                if (item.mesh.material) {
-                    item.mesh.material.emissive?.setHex(0xffaa00);
-                    item.mesh.material.emissiveIntensity = lt;
-                }
-            });
-            if (lt >= 1.0) lightDone = true;
-        }
-
-        // Avance de A a B — empieza después de WAIT_A
-        if (moveTimer >= WAIT_A) {
-            const elapsed = moveTimer - WAIT_A;
-            const t = Math.min(elapsed / TRAVEL, 1.0);
-            const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
-            camera.position.lerpVectors(posA, posB, ease);
-            // Rotación fija durante el viaje — solo gira al llegar a B
-            camera.rotation.copy(rotB);
-        }
-
-        // En punto B — giro sutil hacia el lado + diálogo
-        if (moveTimer >= WAIT_A + TRAVEL) {
-            const inB = moveTimer - (WAIT_A + TRAVEL);
-            const giroT = Math.min(inB / 1.5, 1.0);
-            const ease = giroT < 0.5 ? 2*giroT*giroT : -1+(4-2*giroT)*giroT;
-            camera.rotation.y = rotB.y + (rotC.y - rotB.y) * ease;
-
-            if (!dialogShown && inB > 0.8) {
-                dialogShown = true;
-                ui.showSubtitle("Zare: 'Regresó la luz... qué alivio.'", 3000);
-            }
-        }
-    };
-
-    // ── FASE 4: Blackout suave después de WAIT_B en el punto B ──
-    setTimeout(() => {
-        scene.userData.endingUpdate = null;
-        stopSound('respiracion');
-        stopSound('tinitus');
-        // Fade a negro suave (1.5s)
-        let fadeT = 0;
-        const fadeIv = setInterval(() => {
-            fadeT += 0.03;
-            ui.setWakeOpacity(Math.min(fadeT, 1.0));
-            if (fadeT >= 1.0) {
-                clearInterval(fadeIv);
-                houseLights.forEach(item => {
-                    item.light.intensity = 0;
-                    if (item.mesh.material) item.mesh.material.emissiveIntensity = 0;
-                });
-            }
-        }, 45);
-    }, blackoutTime);
-
-    // ── FASES 5-8: Despertar y diálogos (relativo al blackout) ──
-    setTimeout(() => {
-        // Cerrar la puerta silenciosamente antes de despertar
-        // (la cinemática la abrió — en ENDING_OUTSIDE el jugador debe abrirla él)
-        const mainDoor = scene.getObjectByName('Door');
-        if (mainDoor && mainDoor.userData.isOpen) {
-            mainDoor.rotation.y -= Math.PI / 2;
-            mainDoor.userData.isOpen = false;
-        }
-
-        camera.position.copy(CONFIG.POSITIONS.WAKE_END);
-        // PointerLockControls usa orden YXZ — forzarlo antes de asignar rotación
-        // para eliminar cualquier roll (Z) residual de la cinemática
-        camera.rotation.order = 'YXZ';
-        const r = CONFIG.ROTATIONS.WAKE_END;
-        camera.rotation.set(r.x, r.y, 0);
-        flashlight.intensity = 0;
-        uvMode = 'off';
-        inventorySetFlashlightMode('off');
-        ambientLight.intensity = 0.28;
-        // Re-encender focos de la casa al despertar
-        houseLights.forEach(item => { 
-            item.light.intensity = 1.5;
-            if (item.mesh.material) {
-                item.mesh.material.emissive.setHex(0xffaa00);
-                item.mesh.material.emissiveIntensity = 1.0;
-            }
-        });
-        gameState = 'ENDING_WAKE';
-    }, blackoutTime + 2000);
-
-    setTimeout(() => {
-        // Parpadeos cinematográficos — curva sinusoidal suave, como película
-        // Cada parpadeo: baja lento, sube rápido (como un ojo real)
-        const blinks = [
-            { start: 0.0,  end: 0.18, dir: 'close' }, // cierra lento
-            { start: 0.18, end: 0.28, dir: 'open'  }, // abre rápido
-            { start: 0.32, end: 0.48, dir: 'close' }, // cierra lento
-            { start: 0.48, end: 0.55, dir: 'open'  }, // abre rápido
-            { start: 0.60, end: 0.80, dir: 'close' }, // cierra muy lento
-            { start: 0.80, end: 1.00, dir: 'open'  }, // abre final — queda abierto
-        ];
-        let p = 0;
-        const iv = setInterval(() => {
-            p += 0.008; // muy lento — 0 a 1 en ~6 segundos
-            let op = 0;
-            for (const b of blinks) {
-                if (p >= b.start && p <= b.end) {
-                    const t = (p - b.start) / (b.end - b.start);
-                    // Ease: cierre lento (ease-in), apertura rápida (ease-out)
-                    op = b.dir === 'close'
-                        ? t * t                        // ease-in: cierra acelerado
-                        : 1.0 - (1.0 - t) * (1.0 - t); // ease-out: abre desacelerado
-                    break;
-                }
-            }
-            // Después del último blink — ojo completamente abierto
-            if (p > 1.0) { clearInterval(iv); ui.setWakeOpacity(0); return; }
-            ui.setWakeOpacity(op);
-        }, 50);
-    }, blackoutTime + 2200);
-
-    setTimeout(() => {
-        ui.showSubtitle("Zare: '...fue solo una pesadilla.'", 4000);
-    }, blackoutTime + 5000);
-
-    setTimeout(() => {
-        ui.showSubtitle("Zare: 'Daniel... Daniel está aquí. Estoy en casa.'", 4500);
-    }, blackoutTime + 10000);
-
-    setTimeout(() => {
-        ui.showSubtitle("Zare: 'Necesito tomar un poco de aire...'", 4000);
-    }, blackoutTime + 15500);
-
-    setTimeout(() => {
-        gameState = 'ENDING_OUTSIDE';
-        ui.showSubtitle("[ Ve a la puerta principal ]", 4000);
-        // flyMode garantiza movimiento sin necesitar click del usuario
-        input.keys.flyMode = false; // reset primero
-        setTimeout(() => {
-            input.keys.flyMode = true;
-            console.log('✅ ENDING_OUTSIDE — flyMode activado');
-        }, 100);
-    }, blackoutTime + 20000);
-});
-
-function triggerScreamer() {
-    // Flash blanco
-    const flash = document.createElement('div');
-    flash.style.cssText = 'position:fixed;inset:0;background:white;z-index:99999;opacity:0;transition:opacity 0.05s;';
-    document.body.appendChild(flash);
-
-    playSound('jumpscare');
-
-    // Flash rápido
-    flash.style.opacity = '1';
-    setTimeout(() => { flash.style.opacity = '0'; }, 100);
-    setTimeout(() => { flash.style.opacity = '1'; }, 200);
-    setTimeout(() => { flash.style.opacity = '0'; }, 300);
-    setTimeout(() => {
-        flash.style.background = 'black';
-        flash.style.opacity = '1';
-        flash.style.transition = 'opacity 2s';
-    }, 400);
-
-    // Créditos después del negro
-    setTimeout(() => {
-        showCredits();
-    }, 3000);
-}
-
-function showCredits() {
-    const credits = document.createElement('div');
-    credits.style.cssText = `
-        position: fixed; inset: 0; background: black; z-index: 100000;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        font-family: 'Courier New', monospace; color: #cc0000;
-        opacity: 0; transition: opacity 3s;
-    `;
-    credits.innerHTML = `
-        <div style="font-size:48px; letter-spacing:8px; margin-bottom:40px;">FIN</div>
-        <div style="font-size:14px; color:#555; letter-spacing:4px; margin-bottom:60px;">LA CONGREGACIÓN DEL SÉPTIMO UMBRAL</div>
-        <div style="font-size:12px; color:#333; letter-spacing:2px;">Un juego de</div>
-        <div style="font-size:18px; color:#444; letter-spacing:4px; margin-top:10px;">ZARE</div>
-        <div style="font-size:10px; color:#222; margin-top:60px; letter-spacing:2px;">Presiona R para reiniciar</div>
-    `;
-    document.body.appendChild(credits);
-    setTimeout(() => { credits.style.opacity = '1'; }, 100);
-
-    document.addEventListener('keydown', (e) => {
-        if (e.code === 'KeyR') location.reload();
-    }, { once: true });
-}
 
 animate();

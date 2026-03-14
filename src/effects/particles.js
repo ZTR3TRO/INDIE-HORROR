@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { scene } from '../core/world.js';
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../data/config.js';
 
 let rainSystem, explosionSystem;
 

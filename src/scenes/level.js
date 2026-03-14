@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { scene, camera, transformControls } from '../core/world.js'; 
-import { CONFIG } from '../config.js'; 
+import { CONFIG } from '../data/config.js'; 
 import { playSound } from '../core/audio.js';
 
 export let keyWorldPosition    = new THREE.Vector3();

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CONFIG } from '../config.js';
+import { CONFIG } from '../data/config.js';
 import { scene, camera } from '../core/world.js';
 
 export let ambientLight;

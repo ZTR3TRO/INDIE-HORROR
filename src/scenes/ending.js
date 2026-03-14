@@ -15,7 +15,8 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         if (getGameState() === 'ENDING_CINEMATIC') return; // ya disparado
 
         toggleNumpadUI(false);
-        controls.unlock();
+        // NO unlock controls — el teclado deja de funcionar si se desbloquea
+        // La cámara se puede mover programáticamente aunque controls esté locked
         setGameState('ENDING_CINEMATIC');
 
         const posA = camera.position.clone();
@@ -72,9 +73,16 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
                 const giroT = Math.min(inB / 1.5, 1.0);
                 const ease = giroT < 0.5 ? 2*giroT*giroT : -1+(4-2*giroT)*giroT;
                 camera.rotation.y = rotB.y + (rotC.y - rotB.y) * ease;
+
+                // Al girar: sombra aparece parada en la oscuridad
                 if (!dialogShown && inB > 0.8) {
                     dialogShown = true;
-                    ui.showSubtitle("Zare: 'Regresó la luz... qué alivio.'", 3000);
+                    import('../effects/screamer.js').then(({ spawnShadowStill }) => {
+                        spawnShadowStill();
+                    });
+                    setTimeout(() => {
+                        ui.showSubtitle("Zare: '¿Qué... qué es eso?'", 3000);
+                    }, 400);
                 }
             }
         };
@@ -121,6 +129,10 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
                 }
             });
             setGameState('ENDING_WAKE');
+            // Usar flyMode — funciona sin necesitar pointer lock
+            // (el browser rechaza controls.lock() si no viene de un click directo)
+            input.keys.flyMode = true;
+            ui.showSubtitle('[ Usa WASD para moverte ]', 4000);
         }, blackoutTime + 2000);
 
         // FASE 6 — parpadeos
@@ -158,8 +170,8 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         setTimeout(() => {
             setGameState('ENDING_OUTSIDE');
             ui.showSubtitle("[ Ve a la puerta principal ]", 4000);
-            input.keys.flyMode = false;
-            setTimeout(() => { input.keys.flyMode = true; }, 100);
+            // flyMode garantiza movimiento sin necesitar pointer lock
+            input.keys.flyMode = true;
         }, blackoutTime + 20000);
     });
 }

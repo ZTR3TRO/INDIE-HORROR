@@ -97,9 +97,15 @@ function buildShadowCreature() {
 // ── Init — llamar una vez al arrancar el juego ──────────────────────────────
 export function initShadow() {
     shadowEntity = buildShadowCreature();
-    shadowEntity.scale.set(0.9, 0.9, 0.9); // tamaño justo para verse completa
+    shadowEntity.scale.set(1.6, 1.6, 1.6); // más grande y grueso
     shadowEntity.visible = false;
     scene.add(shadowEntity);
+
+    // Luz negra/morada que irradia la entidad
+    const darkLight = new THREE.PointLight(0x2a004a, 3.0, 8);
+    darkLight.position.set(0, 1.5, 0);
+    shadowEntity.add(darkLight);
+
     console.log('👤 Sombra criatura lista');
 }
 
@@ -130,7 +136,8 @@ export function updateShadow(delta) {
 // ── Aparece parada, sin moverse aún ────────────────────────────────────────
 export function spawnShadowStill() {
     if (!shadowEntity) return;
-    shadowEntity.position.set(1.809, 0.0, 18.0);
+    // Posición exterior frente a la puerta principal
+    shadowEntity.position.set(-5.429, 0.0, 5.660);
     shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
     shadowEntity.scale.setScalar(0.9);
     shadowEntity.visible = true;
@@ -150,7 +157,7 @@ export function triggerScreamer() {
     // Si spawnShadowStill ya la posicionó, solo arrancar el approach
     // Si no estaba visible, posicionarla ahora
     if (!shadowEntity.visible) {
-        shadowEntity.position.set(1.809, 0.0, 18.0);
+        shadowEntity.position.set(-5.429, 0.0, 5.660);
         shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
         shadowEntity.visible = true;
     }

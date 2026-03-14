@@ -49,11 +49,25 @@ export function initWorld() {
     // Logear cambios automáticamente
     transformControls.addEventListener('change', () => {
         const obj = transformControls.object;
-        if (obj) {
-            console.log(`--- 🛠️ DATOS ACTUALIZADOS DEL OBJETO ---`); 
-            console.log(`Pos: new THREE.Vector3(${obj.position.x.toFixed(2)}, ${obj.position.y.toFixed(2)}, ${obj.position.z.toFixed(2)})`);
-            console.log(`Rot: new THREE.Euler(${obj.rotation.x.toFixed(2)}, ${obj.rotation.y.toFixed(2)}, ${obj.rotation.z.toFixed(2)})`);
-            console.log(`Sca: new THREE.Vector3(${obj.scale.x.toFixed(2)}, ${obj.scale.y.toFixed(2)}, ${obj.scale.z.toFixed(2)})`);
+        if (!obj) return;
+
+        const p = obj.position;
+        const s = obj.scale;
+
+        // Log genérico siempre visible
+        console.log(`--- 🛠️ ${obj.name} ---`);
+        console.log(`Pos: ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}`);
+        console.log(`Rot: ${obj.rotation.x.toFixed(3)}, ${obj.rotation.y.toFixed(3)}, ${obj.rotation.z.toFixed(3)}`);
+        console.log(`Sca: ${s.x.toFixed(3)}, ${s.y.toFixed(3)}, ${s.z.toFixed(3)}`);
+
+        // Si es un collider de vidrio: imprimir el addWall() listo para copiar/pegar
+        // BoxGeometry base es 1x1x1, así que scale.xyz = tamaño final
+        if (obj.name.startsWith('col_glass')) {
+            const shortName = obj.name.replace('col_', '');
+            console.log(
+                `%c📋 COPIAR → addWall('${shortName}',  ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)},  ${s.x.toFixed(3)}, ${s.y.toFixed(3)}, ${s.z.toFixed(3)});`,
+                'color:#00ff88; font-weight:bold; font-size:13px; background:#111; padding:2px 6px;'
+            );
         }
     });
     

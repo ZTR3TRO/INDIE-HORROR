@@ -5,7 +5,7 @@ import { initWorld, scene, camera, renderer, controls, transformControls } from 
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
 import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, ritualStoneMesh, uvLampMesh, uvBloodMark, loadUVLamp, loadUVBloodMark, animateUVLamp, setUVMarkVisible } from './scenes/level.js';
 import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly } from './ui/inventoryUI.js';
-import { updatePlayer, debugInfo } from './core/player.js'; 
+import { updatePlayer, debugInfo, moveWithCollision, getWall, getFloor, getGroundY } from './core/player.js'; 
 import { initUI, ui } from './ui/ui.js';            
 import { initLaptop, toggleLaptopUI } from './ui/laptopUI.js'; 
 import { initNumpad, toggleNumpadUI } from './ui/numpadUI.js'; 
@@ -14,7 +14,7 @@ import { initStoneUI, showStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 import { DIALOGUES, playDialogueSequence } from './data/dialogues.js';
-import { initShadow, updateShadow, triggerScreamer, spawnShadowStill } from './effects/screamer.js';
+import { initShadow, updateShadow, triggerScreamer } from './effects/screamer.js';
 import { initEnding } from './scenes/ending.js';
 
 initWorld(); 
@@ -69,9 +69,21 @@ let finalCallTriggered = false;
 let finalCallAnswered = false;
 let endingTriggered = false;
 
-const debugDiv = document.createElement('div');
-debugDiv.style.cssText = "position:fixed; top:10px; left:10px; color:lime; font-family:monospace; z-index:10000; background:rgba(0,0,0,0.7); padding:10px; pointer-events:none; font-size:12px; line-height:1.6;";
-document.body.appendChild(debugDiv);
+// Teclado directo para ENDING_WAKE / ENDING_OUTSIDE — independiente de PointerLock
+const endingKeys = { forward: false, backward: false, left: false, right: false };
+document.addEventListener('keydown', (e) => {
+    if (gameState !== 'ENDING_WAKE' && gameState !== 'ENDING_OUTSIDE') return;
+    if (e.code === 'KeyW' || e.code === 'ArrowUp')    endingKeys.forward  = true;
+    if (e.code === 'KeyS' || e.code === 'ArrowDown')  endingKeys.backward = true;
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft')  endingKeys.left     = true;
+    if (e.code === 'KeyD' || e.code === 'ArrowRight') endingKeys.right    = true;
+});
+document.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyW' || e.code === 'ArrowUp')    endingKeys.forward  = false;
+    if (e.code === 'KeyS' || e.code === 'ArrowDown')  endingKeys.backward = false;
+    if (e.code === 'KeyA' || e.code === 'ArrowLeft')  endingKeys.left     = false;
+    if (e.code === 'KeyD' || e.code === 'ArrowRight') endingKeys.right    = false;
+});
 
 const startBtn = document.getElementById('startBtn');
 if(startBtn) {
@@ -85,13 +97,14 @@ if(startBtn) {
         // Encender focos de la casa al inicio — se apagarán tras la explosión
         setTimeout(() => {
             houseLights.forEach(item => { 
-                item.light.intensity = 1.5;
+                item.light.intensity = 3.0;
+                item.light.distance = 18;
                 if (item.mesh.material) {
                     item.mesh.material.emissive.setHex(0xffaa00);
-                    item.mesh.material.emissiveIntensity = 1.0;
+                    item.mesh.material.emissiveIntensity = 1.5;
                 }
             });
-            streetLights.forEach(item => { item.light.intensity = 8.0; item.mesh.material.emissiveIntensity = 3.0; });
+            streetLights.forEach(item => { item.light.intensity = 15.0; item.mesh.material.emissiveIntensity = 4.0; });
             ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM;
         }, 500);
     });
@@ -99,9 +112,9 @@ if(startBtn) {
 
 renderer.domElement.addEventListener('click', () => {
     if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen) controls.lock();
-    if (gameState === 'ENDING_OUTSIDE' && !controls.isLocked) {
-        controls.lock();
-        input.keys.flyMode = false; // ya no necesita flyMode
+    if ((gameState === 'ENDING_OUTSIDE' || gameState === 'ENDING_WAKE') && !controls.isLocked) {
+        // Solo intentar lockear — NO apagar flyMode porque es el fallback de movimiento
+        try { controls.lock(); } catch(e) {}
     }
 });
 
@@ -138,47 +151,6 @@ function animate() {
     updateShadow(delta);
     if (scene.userData.endingUpdate) scene.userData.endingUpdate(delta);
 
-    const debugRay = new THREE.Raycaster();
-    debugRay.setFromCamera(new THREE.Vector2(0, 0), camera);
-    const debugHits = debugRay.intersectObject(scene, true);
-    let objectName = "---";
-    let objectPos = "---";
-    let objectWorldPos = "---";
-    if (debugHits.length > 0) {
-        const hit = debugHits[0];
-        objectName = hit.object.name;
-        const lp = hit.object.position;
-        objectPos = `${lp.x.toFixed(2)}, ${lp.y.toFixed(2)}, ${lp.z.toFixed(2)}`;
-        const wp = new THREE.Vector3();
-        hit.object.getWorldPosition(wp);
-        objectWorldPos = `${wp.x.toFixed(2)}, ${wp.y.toFixed(2)}, ${wp.z.toFixed(2)}`;
-    }
-
-    const cp = camera.position;
-    const camPos = `${cp.x.toFixed(2)}, ${cp.y.toFixed(2)}, ${cp.z.toFixed(2)}`;
-
-    const distToLaptop = laptopWorldPosition.lengthSq() > 0 
-        ? camera.position.distanceTo(laptopWorldPosition).toFixed(2) 
-        : '?';
-
-    const distToBook = bookWorldPosition && bookWorldPosition.lengthSq() > 0
-        ? camera.position.distanceTo(bookWorldPosition).toFixed(2)
-        : '?';
-
-    const distToKey = keyWorldPosition && keyWorldPosition.lengthSq() > 0
-        ? camera.position.distanceTo(keyWorldPosition).toFixed(2)
-        : '?';
-
-    debugDiv.innerHTML = `
-        OBJETO: ${objectName}<br>
-        POS LOCAL: ${objectPos}<br>
-        POS MUNDO: ${objectWorldPos}<br>
-        CAM: ${camPos}<br>
-        LLAVE: ${hasKey} | BATERÍAS: ${batteriesCollected}/3<br>
-        Estado: ${gameState}<br>
-        DIST LAPTOP: ${distToLaptop} | DIST BOOK: ${distToBook} | DIST KEY: ${distToKey}
-    `.trim();
-
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
 
     if (gameState === 'WAKING_UP') {
@@ -201,7 +173,31 @@ function animate() {
         if (progress >= 1.0) { gameState = 'PHONE_RINGING'; ui.setWakeOpacity(0); ui.showInteract(true); playSound('telefono'); }
     }
 
-    if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY' || gameState === 'ENDING_OUTSIDE') && !transformControls.dragging) {
+    // Movimiento directo para ENDING_WAKE y ENDING_OUTSIDE
+    // Evita por completo InputManager y PointerLock — pero sí respeta colisiones
+    if (gameState === 'ENDING_WAKE' || gameState === 'ENDING_OUTSIDE') {
+        const spd = 2.5 * delta;
+        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        fwd.y = 0; fwd.normalize();
+        const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+        rgt.y = 0; rgt.normalize();
+        let dx = 0, dz = 0;
+        if (endingKeys.forward)  { dx += fwd.x * spd; dz += fwd.z * spd; }
+        if (endingKeys.backward) { dx -= fwd.x * spd; dz -= fwd.z * spd; }
+        if (endingKeys.left)     { dx -= rgt.x * spd; dz -= rgt.z * spd; }
+        if (endingKeys.right)    { dx += rgt.x * spd; dz += rgt.z * spd; }
+        if (dx !== 0 || dz !== 0) moveWithCollision(dx, dz, getWall());
+
+        // Gravedad — pegar al suelo
+        const moveDir = new THREE.Vector3(dx, 0, dz);
+        const groundY = getGroundY(getFloor(), moveDir.length() > 0 ? moveDir.normalize() : null);
+        if (groundY !== null) {
+            const targetY = groundY + 1.7;
+            camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, Math.min(delta * 20, 1));
+        }
+    }
+
+    if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
         if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
@@ -311,22 +307,14 @@ input.actions.onInteract = () => {
         return;
     }
 
-    // ENDING: jugador abre la puerta para "tomar aire" → SCREAMER
+    // ENDING: jugador abre la puerta → jumpscare
     if (gameState === 'ENDING_OUTSIDE') {
         const door = getHoveredDoor();
         if (door && door.name === 'Door') {
             const dist = camera.position.distanceTo(door.position);
             if (dist < 2.5 && !door.userData.isOpen) {
                 toggleDoor(door);
-                // Sombra aparece parada en la oscuridad
-                setTimeout(() => {
-                    spawnShadowStill();
-                    setTimeout(() => {
-                        ui.showSubtitle("Zare: '¿Qué... qué es eso?'", 3000);
-                    }, 800);
-                    // La entidad "despierta" y corre
-                    setTimeout(() => { triggerScreamer(); }, 4000);
-                }, 1200);
+                setTimeout(() => { triggerScreamer(); }, 800);
             }
         }
         return;

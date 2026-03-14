@@ -75,8 +75,8 @@ function rebuildCache() {
     );
 }
 
-function getWall()  { if (!_wall  || collidableObjects.length !== _lastLen) rebuildCache(); return _wall;  }
-function getFloor() { if (!_floor || collidableObjects.length !== _lastLen) rebuildCache(); return _floor; }
+export function getWall()  { if (!_wall  || collidableObjects.length !== _lastLen) rebuildCache(); return _wall;  }
+export function getFloor() { if (!_floor || collidableObjects.length !== _lastLen) rebuildCache(); return _floor; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLISIÓN HORIZONTAL — separación por eje (estilo Quake/Source)
@@ -144,7 +144,7 @@ function overlapsWall(wall) {
     return false;
 }
 
-function moveWithCollision(dx, dz, wall) {
+export function moveWithCollision(dx, dz, wall) {
     // Eje X — raycast + overlap fallback
     if (Math.abs(dx) > 0.00005) {
         camera.position.x += dx;
@@ -198,7 +198,7 @@ const GOFFSETS = [
 const MAX_STEP   = 0.50;  // escalón garaje = 0.41 + margen
 const GROUND_FAR = CONFIG.PLAYER.HEIGHT + 1.2;
 
-function getGroundY(floor, moveDir) {
+export function getGroundY(floor, moveDir) {
     let best = null;
 
     // Cuadrícula base 3×3

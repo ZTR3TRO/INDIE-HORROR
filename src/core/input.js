@@ -9,11 +9,13 @@ export class InputManager {
         this.actions = { 
             onInteract: null, 
             onFlashlight: null, 
+            onInventory: null,      // Tab — mostrar/ocultar inventario
+            onCamCapture: null,     // C — capturar posición cámara (DEV)
             onDebugLog: null, 
             onLightUp: null,    
             onLightDown: null,
-            onFogUp: null,      // 👈 NUEVO
-            onFogDown: null,    // 👈 NUEVO
+            onFogUp: null,
+            onFogDown: null,
             onMakerSpawn: null 
         };
         this.init();
@@ -40,6 +42,11 @@ export class InputManager {
                     break;
                 case 'KeyF': this.actions.onFlashlight?.(); break;
                 case 'KeyE': this.actions.onInteract?.(); break;
+                case 'KeyC': this.actions.onCamCapture?.(); break;
+                case 'Tab':
+                    e.preventDefault(); // evitar que el navegador cambie el foco
+                    this.actions.onInventory?.();
+                    break;
 
                 // --- HERRAMIENTAS MAKER / DEBUG ---
                 case 'KeyM': this.actions.onMakerSpawn?.(); break;
@@ -57,12 +64,12 @@ export class InputManager {
                     break;
 
                 // 👇 CONTROLES DE NIEBLA
-                case 'BracketRight':  // Tecla ]
+                case 'BracketRight':
                 case 'Digit7':
                     this.actions.onFogUp?.(); 
                     break;
                     
-                case 'BracketLeft':   // Tecla [
+                case 'BracketLeft':
                 case 'Digit6':
                     this.actions.onFogDown?.(); 
                     break;

@@ -691,3 +691,126 @@ export function setUVMarkVisible(visible) {
         if (i >= steps) clearInterval(iv);
     }, 16);
 }
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTAS UV — texto en las paredes solo visible con luz ultravioleta
+// ─────────────────────────────────────────────────────────────────────────────
+export const uvNotes = [];
+
+function createUVNote(lines, x, y, z, rotY, scaleX = 1.0, scaleY = 1.0) {
+    const W = 512, H = 512;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    // Fondo muy sutil — papel viejo
+    ctx.fillStyle = 'rgba(60, 0, 80, 0.08)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Texto en tinta UV — morado oscuro
+    ctx.font = 'bold 28px "Courier New", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    lines.forEach((line, i) => {
+        // Sombra para efecto fluorescente
+        ctx.shadowColor = 'rgba(180, 0, 255, 0.9)';
+        ctx.shadowBlur = 8;
+        ctx.fillStyle = 'rgba(200, 50, 255, 0.88)';
+        ctx.fillText(line, 40, 60 + i * 44);
+    });
+
+    // Borde de nota rasgada — esquinas con manchas
+    ctx.shadowBlur = 0;
+    for (let j = 0; j < 6; j++) {
+        const bx = Math.random() * W;
+        const by = Math.random() * H;
+        ctx.beginPath();
+        ctx.arc(bx, by, 3 + Math.random() * 8, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(150, 0, 200, ${0.1 + Math.random() * 0.2})`;
+        ctx.fill();
+    }
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.minFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.NearestFilter;
+
+    const geo = new THREE.PlaneGeometry(0.6, 0.6);
+    const mat = new THREE.MeshBasicMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    mesh.rotation.y = rotY;
+    mesh.scale.set(scaleX, scaleY, 1);
+    mesh.name = 'uv_note';
+    mesh.userData.isUVNote = true;
+
+    scene.add(mesh);
+    uvNotes.push(mesh);
+    return mesh;
+}
+
+export function loadUVNotes() {
+    // Nota 1 — Cuarto 2do piso (3.438, 4.894, -12.144)
+    // Pared lateral — rotY = 0 (mirando hacia Z positivo)
+    createUVNote([
+        '— Registro IX, 1963 —',
+        '',
+        'Los cimientos de esta casa',
+        'fueron elegidos.',
+        'La disposición de los cuartos',
+        'forma el canal perfecto.',
+        '',
+        'La Congregación lo sabe.',
+        'Siempre lo supo.',
+    ], 3.2, 5.0, -12.0, 0, 2.8, 2.8);
+
+    // Nota 2 — Pasillo 2do piso (-1.446, 5.157, -10.837)
+    // Pared frontal — rotY = Math.PI (mirando hacia Z negativo)
+    createUVNote([
+        'Siete cánticos.',
+        'Siete velas.',
+        'Siete ofrendas.',
+        '',
+        'Con ese número',
+        'el umbral nunca',
+        'se cerrará.',
+        '',
+        '— El 7 es la cerradura —',
+    ], -1.3, 5.2, -10.7, Math.PI, 2.8, 2.8);
+
+    // Nota 3 — Garaje / 1er piso (9.338, 1.955, -8.578)
+    // Pared lateral izquierda — rotY = Math.PI / 2
+    createUVNote([
+        'Alto. Sin cara.',
+        'Se detiene frente',
+        'a la puerta.',
+        '',
+        'Él fue el primero',
+        'en ser contaminado.',
+        'Luego vendría ella.',
+        '',
+        '— Séptimo Umbral —',
+    ], 9.2, 2.0, -8.4, Math.PI / 2, 2.8, 2.8);
+}
+
+
+export function setUVNotesVisible(visible) {
+    const target = visible ? 0.9 : 0;
+    uvNotes.forEach(note => {
+        const start = note.material.opacity;
+        const steps = 20;
+        let i = 0;
+        const iv = setInterval(() => {
+            i++;
+            note.material.opacity = start + (target - start) * (i / steps);
+            if (i >= steps) clearInterval(iv);
+        }, 16);
+    });
+}

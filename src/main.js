@@ -3,7 +3,7 @@ import { CONFIG } from './data/config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, ritualStoneMesh, uvLampMesh, uvBloodMark, loadUVLamp, loadUVBloodMark, animateUVLamp, setUVMarkVisible } from './scenes/level.js';
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, ritualStoneMesh, uvLampMesh, uvBloodMark, loadUVLamp, loadUVBloodMark, animateUVLamp, setUVMarkVisible, loadUVNotes, setUVNotesVisible } from './scenes/level.js';
 import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly } from './ui/inventoryUI.js';
 import { updatePlayer, debugInfo, moveWithCollision, getWall, getFloor, getGroundY } from './core/player.js'; 
 import { initUI, ui } from './ui/ui.js';            
@@ -25,10 +25,31 @@ initLaptop();
 initNumpad(); 
 initBook(); 
 initAudio(); 
+
+// Posición de la cámara para el fondo del menú
+camera.position.set(-11.195, 8.356, 19.804);
+camera.rotation.set(-0.208, -0.654, -0.133);
+
+// Encender luces para el fondo del menú — se apagarán al iniciar
+setTimeout(() => {
+    houseLights.forEach(item => {
+        item.light.intensity = 3.0;
+        if (item.mesh.material) {
+            item.mesh.material.emissive.setHex(0xffaa00);
+            item.mesh.material.emissiveIntensity = 1.5;
+        }
+    });
+    streetLights.forEach(item => {
+        item.light.intensity = 15.0;
+        item.mesh.material.emissiveIntensity = 4.0;
+    });
+    ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM;
+}, 600);
 createRain(); 
 initInventoryUI();
 loadUVLamp();
 loadUVBloodMark();
+loadUVNotes();
 initShadow();
 
 initStoneUI(() => {
@@ -153,6 +174,11 @@ function animate() {
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
 
+    // Fondo animado del menú — paneo lento y atmosférico
+    if (gameState === 'START') {
+        camera.rotation.y -= delta * 0.008; // giro muy lento
+    }
+
     if (gameState === 'WAKING_UP') {
         stateTimer += delta;
         const progress = Math.min(stateTimer / CONFIG.TIMING.WAKE_DURATION, 1.0);
@@ -271,7 +297,7 @@ function animate() {
             paranoiaTimer = 0; 
         }
 
-        if (!tutorialShown && stateTimer > 2.0) { ui.showSubtitle("Presiona [ F ] para la Linterna", 4000); tutorialShown = true; }
+        if (!tutorialShown && stateTimer > 2.0) { ui.showSubtitle("Presiona [ F ] para el Teléfono", 4000); tutorialShown = true; }
         
         if (!powerOutageCall && !powerRestored && stateTimer > 6.0) { 
             playSound('telefono'); 
@@ -307,6 +333,16 @@ input.actions.onInteract = () => {
         return;
     }
 
+    // ENDING_WAKE — puertas normales funcionan
+    if (gameState === 'ENDING_WAKE') {
+        const door = getHoveredDoor();
+        if (door) {
+            const dist = camera.position.distanceTo(door.position);
+            if (dist < 2.5) toggleDoor(door);
+        }
+        return;
+    }
+
     // ENDING: jugador abre la puerta → jumpscare
     if (gameState === 'ENDING_OUTSIDE') {
         const door = getHoveredDoor();
@@ -334,7 +370,7 @@ input.actions.onInteract = () => {
                     hasKey = true;
                     inventoryCollect('key');
                     playSound('objeto'); 
-                    ui.showSubtitle("🔑 ENCONTRASTE LA LLAVE DEL GARAJE", 4000); 
+                    ui.showSubtitle("Encontraste la llave del garaje", 4000); 
                     return;
                 }
             }
@@ -360,7 +396,7 @@ input.actions.onInteract = () => {
                             batteryCollectedThisFrame = true;
                             inventorySetBatteries(batteriesCollected);
                             playSound('objeto'); 
-                            ui.showSubtitle(`🔋 Fusible recogido (${batteriesCollected}/3)`, 2000);
+                            ui.showSubtitle(`Fusible recogido (${batteriesCollected}/3)`, 2000);
                             if (batteriesCollected === 3) {
                                 setTimeout(() => {
                                     ui.showSubtitle("Zare: 'Tengo los fusibles. Iré a la caja.'", 5000);
@@ -475,7 +511,7 @@ input.actions.onInteract = () => {
             ui.showCall(true);
             playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
                 ui.showCall(false);
-                ui.showSubtitle("Misión: Ve a la caja de fusibles en el GARAJE", 6000);
+                ui.setMission("Ve a la caja de fusibles en el garaje");
             });
             return;
         }
@@ -488,7 +524,7 @@ input.actions.onInteract = () => {
             ui.showCall(true);
             playDialogueSequence(ui, DIALOGUES.CALL_FINAL, () => {
                 ui.showCall(false);
-                ui.showSubtitle("Misión: ¡ESCAPA POR LA PUERTA PRINCIPAL!", 6000);
+                ui.setMission("Escapa por la puerta principal");
             });
             return;
         }
@@ -496,13 +532,13 @@ input.actions.onInteract = () => {
         // ⚡ CAJA DE FUSIBLES
         if (fuseboxMesh && camera.position.distanceTo(CONFIG.POSITIONS.FUSEBOX) < 1.5 && checkLineOfSight(CONFIG.POSITIONS.FUSEBOX)) {
             if (fuseboxUsed) {
-                ui.showSubtitle('⚠️ La caja está quemada. Ya no funciona.', 3000);
+                ui.showSubtitle('La caja está quemada. Ya no funciona.', 3000);
                 return;
             }
             if (batteriesCollected === 3) {
                 if (!powerRestored) {
                     powerRestored = true;
-                    ui.showSubtitle("⚡ SISTEMA REINICIADO", 3000);
+                    ui.showSubtitle("SISTEMA REINICIADO", 3000);
                     playSound('zumbido_electrico'); 
 
                     houseLights.forEach(item => {
@@ -538,7 +574,7 @@ input.actions.onInteract = () => {
                         });
                         ambientLight.intensity = 0;
                         stopSound('zumbido_electrico'); 
-                        ui.showSubtitle("💀 El sistema colapsó por completo...", 5000);
+                        ui.showSubtitle("El sistema colapsó por completo...", 5000);
                         setTimeout(() => {
                             playSound('telefono');
                             finalCallTriggered = true;
@@ -547,7 +583,7 @@ input.actions.onInteract = () => {
                     }, 15000); 
                 }
             } else {
-                ui.showSubtitle(`⚠️ FALTAN FUSIBLES (${batteriesCollected}/3)`, 3000);
+                ui.showSubtitle(`Faltan fusibles (${batteriesCollected}/3)`, 3000);
             }
             return;
         }
@@ -568,10 +604,11 @@ input.actions.onInteract = () => {
                     ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
                     if (!isNumpadOpen) {
                         isNumpadOpen = true;
+                        ui.clearMission();
                         controls.unlock();
                         toggleNumpadUI(true);
                         setTimeout(() => {
-                            ui.showSubtitle("Misión: Buscar los CÓDIGOS en la casa para escapar", 6000);
+                            ui.setMission("Buscar el código para escapar");
                         }, 4000);
                     }
                     return;
@@ -587,11 +624,11 @@ input.actions.onInteract = () => {
                     playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: 'Maldición, tiene candado... necesito buscar la llave.'", 4000); 
                     setTimeout(() => {
-                        ui.showSubtitle("Misión: Buscar LLAVE en la casa para abrir el GARAJE", 5000);
+                        ui.setMission("Buscar la llave del garaje");
                     }, 4000);
                     return; 
                 } else { 
-                    ui.showSubtitle("🔓 Abriendo con la llave...", 2000); 
+                    ui.showSubtitle("Abriendo con la llave...", 2000); 
                 }
             }
 
@@ -654,6 +691,7 @@ input.actions.onFlashlight = () => {
             flashlight.color.setHex(0x7B00FF);
             flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY * 0.8;
             setUVMarkVisible(true);
+            setUVNotesVisible(true);
             inventorySetFlashlightMode('uv');
             // Primera vez que activa la UV — mostrar inventario brevemente
             showInventoryBriefly(2000);
@@ -668,6 +706,7 @@ input.actions.onFlashlight = () => {
         flashlight.color.setHex(0xffffff);
         flashlight.intensity = 0;
         setUVMarkVisible(false);
+        setUVNotesVisible(false);
         inventorySetFlashlightMode('off');
     }
 };

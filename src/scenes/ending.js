@@ -169,7 +169,7 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         // FASE 8 — control al jugador
         setTimeout(() => {
             setGameState('ENDING_OUTSIDE');
-            ui.showSubtitle("[ Ve a la puerta principal ]", 4000);
+            ui.setMission("Ve a la puerta principal");
             // flyMode garantiza movimiento sin necesitar pointer lock
             input.keys.flyMode = true;
         }, blackoutTime + 20000);

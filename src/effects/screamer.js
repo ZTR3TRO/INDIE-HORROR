@@ -189,20 +189,125 @@ function triggerScreamerFlash() {
 export function showCredits() {
     const credits = document.createElement('div');
     credits.style.cssText = `
-        position: fixed; inset: 0; background: black; z-index: 100000;
+        position: fixed; inset: 0; background: #000; z-index: 100000;
         display: flex; flex-direction: column; align-items: center; justify-content: center;
-        font-family: 'Courier New', monospace; color: #cc0000;
-        opacity: 0; transition: opacity 3s;
+        font-family: 'Crimson Text', Georgia, serif;
+        opacity: 0; transition: opacity 2s ease;
+        overflow: hidden;
     `;
+
     credits.innerHTML = `
-        <div style="font-size:48px; letter-spacing:8px; margin-bottom:40px;">FIN</div>
-        <div style="font-size:14px; color:#555; letter-spacing:4px; margin-bottom:60px;">LA CONGREGACIÓN DEL SÉPTIMO UMBRAL</div>
-        <div style="font-size:12px; color:#333; letter-spacing:2px;">Un juego de</div>
-        <div style="font-size:18px; color:#444; letter-spacing:4px; margin-top:10px;">ZARE</div>
-        <div style="font-size:10px; color:#222; margin-top:60px; letter-spacing:2px;">Presiona R para reiniciar</div>
+        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
+        <style>
+            @keyframes creditsLine {
+                from { opacity: 0; transform: translateY(10px); }
+                to   { opacity: 1; transform: translateY(0); }
+            }
+            @keyframes loveAppear {
+                0%   { opacity: 0; transform: scale(0.95); }
+                100% { opacity: 1; transform: scale(1); }
+            }
+            @keyframes heartbeat {
+                0%, 100% { transform: scale(1); }
+                50%      { transform: scale(1.08); }
+            }
+            .c-line { opacity: 0; animation: creditsLine 1s ease forwards; }
+            .c-fin {
+                font-family: 'Cinzel', serif;
+                font-size: clamp(3rem, 8vw, 6rem);
+                font-weight: 900;
+                color: #cc0000;
+                letter-spacing: 0.5rem;
+                text-shadow: 0 0 40px rgba(200,0,0,0.5);
+                animation-delay: 0.3s;
+                margin-bottom: 0.5rem;
+            }
+            .c-subtitle {
+                font-family: 'Cinzel', serif;
+                font-size: clamp(0.6rem, 1.5vw, 0.85rem);
+                letter-spacing: 0.4rem;
+                color: #444;
+                text-transform: uppercase;
+                animation-delay: 1s;
+                margin-bottom: 3rem;
+            }
+            .c-by {
+                font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+                color: #333;
+                letter-spacing: 0.15rem;
+                animation-delay: 1.8s;
+                margin-bottom: 0.4rem;
+            }
+            .c-name {
+                font-family: 'Cinzel', serif;
+                font-size: clamp(1rem, 2.5vw, 1.5rem);
+                color: #666;
+                letter-spacing: 0.3rem;
+                animation-delay: 2.2s;
+                margin-bottom: 4rem;
+            }
+            .c-love {
+                opacity: 0;
+                animation: loveAppear 2s ease forwards;
+                animation-delay: 4s;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 0.6rem;
+            }
+            .c-love-text {
+                font-family: 'Crimson Text', Georgia, serif;
+                font-style: italic;
+                font-size: clamp(1rem, 3vw, 1.5rem);
+                color: #555;
+                letter-spacing: 0.1rem;
+            }
+            .c-love-name {
+                font-family: 'Cinzel', serif;
+                font-size: clamp(1.8rem, 5vw, 3rem);
+                font-weight: 700;
+                color: #cc0000;
+                letter-spacing: 0.4rem;
+                text-shadow: 0 0 30px rgba(200,0,0,0.4);
+                animation: heartbeat 2s ease infinite;
+                animation-delay: 6s;
+            }
+            .c-heart {
+                font-size: 1.2rem;
+                color: #880000;
+                opacity: 0.7;
+            }
+            .c-restart {
+                font-family: 'Cinzel', serif;
+                font-size: 0.65rem;
+                color: #222;
+                letter-spacing: 0.3rem;
+                text-transform: uppercase;
+                opacity: 0;
+                animation: creditsLine 1s ease forwards;
+                animation-delay: 6.5s;
+                margin-top: 3rem;
+            }
+        </style>
+
+        <div class="c-line c-fin">FIN</div>
+        <div class="c-line c-subtitle">La Congregación del Séptimo Umbral</div>
+        <div class="c-line c-by">Un juego de</div>
+        <div class="c-line c-name">DANIEL LÓPEZ</div>
+
+        <div class="c-love">
+            <div class="c-heart">♥</div>
+            <div class="c-love-text">Para la persona que hace que todo valga la pena —</div>
+            <div class="c-love-name">Te amo, Zare</div>
+            <div class="c-heart">♥</div>
+        </div>
+
+        <div class="c-restart">[ R ] Reiniciar</div>
     `;
+
     document.body.appendChild(credits);
     setTimeout(() => { credits.style.opacity = '1'; }, 100);
+
     document.addEventListener('keydown', (e) => {
         if (e.code === 'KeyR') location.reload();
     }, { once: true });

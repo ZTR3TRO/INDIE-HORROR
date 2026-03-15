@@ -3,19 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Indie Horror Game</title>
+    <title>La Congregación del Séptimo Umbral</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="menu" class="menu">
-        <h1>INDIE HORROR</h1>
-        <p>Usa WASD para moverte, Mouse para mirar</p>
-        <p>Presiona ESC para pausar</p>
-        <button id="startBtn">COMENZAR</button>
+        <!-- Fondo con ruido y vignette -->
+        <div class="menu-noise"></div>
+        <div class="menu-vignette"></div>
+
+        <!-- Líneas de escaneo retro -->
+        <div class="scanlines"></div>
+
+        <!-- Contenido -->
+        <div class="menu-content">
+            <div class="menu-eyebrow">Una historia de terror</div>
+            <h1 class="menu-title">
+                <span class="title-line-1">La Congregación</span>
+                <span class="title-line-2">del Séptimo Umbral</span>
+            </h1>
+            <div class="menu-divider">
+                <span>✦</span>
+            </div>
+            <div class="menu-controls">
+                <div class="control-item"><kbd>WASD</kbd> Moverse</div>
+                <div class="control-item"><kbd>MOUSE</kbd> Mirar</div>
+                <div class="control-item"><kbd>E</kbd> Interactuar</div>
+                <div class="control-item"><kbd>F</kbd> Linterna</div>
+            </div>
+            <button id="startBtn">
+                <span class="btn-text">COMENZAR</span>
+                <span class="btn-flicker">▶</span>
+            </button>
+            <div class="menu-warning">⚠ Se recomienda jugar con audífonos y luces apagadas</div>
+        </div>
     </div>
-    
+
     <div id="crosshair"></div>
-    <div id="info">FPS: 60</div>
 
     <script type="module" src="./src/main.js"></script>
 </body>

@@ -102,7 +102,6 @@ function buildColliderForNode(node) {
     collidableObjects.push(mesh);
 
     if (DEBUG_COLLIDERS) {
-        console.log(`📦 ${mesh.name} center=(${center.x.toFixed(2)},${center.y.toFixed(2)},${center.z.toFixed(2)}) size=(${size.x.toFixed(2)},${size.y.toFixed(2)},${size.z.toFixed(2)})`);
     }
 }
 
@@ -396,12 +395,10 @@ function loadHouse() {
                 const n = child.name.toLowerCase();
                 if (n.includes('rock')) {
                     houseRockMaterial = child.material.clone();
-                    console.log('✅ Material roca encontrado en:', child.name);
                     applyRockMaterialToStones();
                 }
             });
         }
-        console.log('🏠 Casa lista.');
     });
 }
 
@@ -692,54 +689,78 @@ export function setUVMarkVisible(visible) {
     }, 16);
 }
 // ─────────────────────────────────────────────────────────────────────────────
-// NOTAS UV — texto en las paredes solo visible con luz ultravioleta
+// NOTAS FÍSICAS COLECCIONABLES
+// Objetos en el mundo con los que el jugador interactúa con [E].
+// Se guardan en el inventario y se leen desde el modal.
+//
+// Cada nota tiene:
+//   noteId      — id único para collectNote()
+//   noteTitle   — nombre en el inventario
+//   noteFoundAt — descripción de dónde se encontró
+//   noteBody    — texto completo de la nota
 // ─────────────────────────────────────────────────────────────────────────────
-export const uvNotes = [];
 
-function createUVNote(lines, x, y, z, rotY, scaleX = 1.0, scaleY = 1.0) {
-    const W = 512, H = 512;
+export const collectableNotes = [];
+
+function createCollectableNote(id, title, foundAt, body, x, y, z, rotY = 0, flat = false) {
+    // Textura canvas — papel amarillento con texto escrito a mano
+    const W = 256, H = 320;
     const c = document.createElement('canvas');
     c.width = W; c.height = H;
     const ctx = c.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
 
-    // Fondo muy sutil — papel viejo
-    ctx.fillStyle = 'rgba(60, 0, 80, 0.08)';
+    // Fondo papel viejo
+    ctx.fillStyle = '#d4c89a';
     ctx.fillRect(0, 0, W, H);
 
-    // Texto en tinta UV — morado oscuro
-    ctx.font = 'bold 28px "Courier New", monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    lines.forEach((line, i) => {
-        // Sombra para efecto fluorescente
-        ctx.shadowColor = 'rgba(180, 0, 255, 0.9)';
-        ctx.shadowBlur = 8;
-        ctx.fillStyle = 'rgba(200, 50, 255, 0.88)';
-        ctx.fillText(line, 40, 60 + i * 44);
-    });
-
-    // Borde de nota rasgada — esquinas con manchas
-    ctx.shadowBlur = 0;
-    for (let j = 0; j < 6; j++) {
-        const bx = Math.random() * W;
-        const by = Math.random() * H;
-        ctx.beginPath();
-        ctx.arc(bx, by, 3 + Math.random() * 8, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(150, 0, 200, ${0.1 + Math.random() * 0.2})`;
-        ctx.fill();
+    // Grano de papel
+    for (let i = 0; i < 800; i++) {
+        const px = Math.random() * W;
+        const py = Math.random() * H;
+        ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.06})`;
+        ctx.fillRect(px, py, 1, 1);
     }
+
+    // Borde doblado — esquina arriba derecha
+    ctx.fillStyle = '#b8a87a';
+    ctx.beginPath();
+    ctx.moveTo(W - 30, 0);
+    ctx.lineTo(W, 30);
+    ctx.lineTo(W, 0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Líneas de libreta sutiles
+    ctx.strokeStyle = 'rgba(100, 80, 40, 0.2)';
+    ctx.lineWidth = 0.5;
+    for (let ly = 40; ly < H - 20; ly += 22) {
+        ctx.beginPath(); ctx.moveTo(14, ly); ctx.lineTo(W - 14, ly); ctx.stroke();
+    }
+
+    // Texto de la nota — solo un indicador visual, el contenido real está en userData
+    ctx.font = 'bold 11px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(40, 25, 10, 0.75)';
+    ctx.textAlign = 'left';
+    const preview = title.toUpperCase();
+    ctx.fillText(preview, 16, 28);
+
+    // Líneas de escritura simulada
+    ctx.font = '9px "Courier New", monospace';
+    ctx.fillStyle = 'rgba(40, 25, 10, 0.5)';
+    const bodyLines = body.split('\n').slice(0, 6);
+    bodyLines.forEach((line, i) => {
+        ctx.fillText(line.slice(0, 28), 16, 52 + i * 22);
+    });
 
     const tex = new THREE.CanvasTexture(c);
     tex.minFilter = THREE.NearestFilter;
     tex.magFilter = THREE.NearestFilter;
 
-    const geo = new THREE.PlaneGeometry(0.6, 0.6);
+    const geo = new THREE.PlaneGeometry(0.18, 0.22);
     const mat = new THREE.MeshBasicMaterial({
         map: tex,
         transparent: true,
-        opacity: 0,
+        opacity: 0,          // invisible hasta UV activa
         depthWrite: false,
         side: THREE.DoubleSide,
     });
@@ -747,63 +768,67 @@ function createUVNote(lines, x, y, z, rotY, scaleX = 1.0, scaleY = 1.0) {
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     mesh.rotation.y = rotY;
-    mesh.scale.set(scaleX, scaleY, 1);
-    mesh.name = 'uv_note';
-    mesh.userData.isUVNote = true;
+    if (flat) mesh.rotation.x = -Math.PI / 2; // acostada sobre superficie horizontal
+    mesh.name = `note_${id}`;
+
+    // Metadatos para recoger desde main.js
+    mesh.userData.isCollectableNote = true;
+    mesh.userData.noteId      = id;
+    mesh.userData.noteTitle   = title;
+    mesh.userData.noteFoundAt = foundAt;
+    mesh.userData.noteBody    = body;
+    mesh.userData.collected   = false;
 
     scene.add(mesh);
-    uvNotes.push(mesh);
+    collidableObjects.push(mesh);
+    collectableNotes.push(mesh);
     return mesh;
 }
 
-export function loadUVNotes() {
-    // Nota 1 — Cuarto 2do piso (3.438, 4.894, -12.144)
-    // Pared lateral — rotY = 0 (mirando hacia Z positivo)
-    createUVNote([
-        '— Registro IX, 1963 —',
-        '',
-        'Los cimientos de esta casa',
-        'fueron elegidos.',
-        'La disposición de los cuartos',
-        'forma el canal perfecto.',
-        '',
-        'La Congregación lo sabe.',
-        'Siempre lo supo.',
-    ], 3.2, 5.0, -12.0, 0, 2.8, 2.8);
+export function loadCollectableNotes() {
 
-    // Nota 2 — Pasillo 2do piso (-1.446, 5.157, -10.837)
-    // Pared frontal — rotY = Math.PI (mirando hacia Z negativo)
-    createUVNote([
-        'Siete cánticos.',
-        'Siete velas.',
-        'Siete ofrendas.',
-        '',
-        'Con ese número',
-        'el umbral nunca',
-        'se cerrará.',
-        '',
-        '— El 7 es la cerradura —',
-    ], -1.3, 5.2, -10.7, Math.PI, 2.8, 2.8);
+    // Nota 1 — Closet 2do piso — VERTICAL
+    createCollectableNote(
+        'carta_elena',
+        'Carta sin destinatario',
+        'Encontrada en el closet del 2do piso',
+        `No sé quién leerá esto.\n\nNos mudamos en enero. En marzo\nmi esposo dejó de hablar.\nNo de golpe — fue gradual.\nPrimero las pausas largas.\nLuego las miradas vacías.\nLuego nada.\n\nLa casa se lo fue comiendo.\nEmpieza por ellos primero.\nSiempre por ellos.\n\n— Elena, 1981`,
+        -0.992, 5.205, -10.985, 1.569, false
+    );
 
-    // Nota 3 — Garaje / 1er piso (9.338, 1.955, -8.578)
-    // Pared lateral izquierda — rotY = Math.PI / 2
-    createUVNote([
-        'Alto. Sin cara.',
-        'Se detiene frente',
-        'a la puerta.',
-        '',
-        'Él fue el primero',
-        'en ser contaminado.',
-        'Luego vendría ella.',
-        '',
-        '— Séptimo Umbral —',
-    ], 9.2, 2.0, -8.4, Math.PI / 2, 2.8, 2.8);
+    // Nota 2 — Mesa del patio exterior — HORIZONTAL
+    createCollectableNote(
+        'registro_congregacion',
+        'Registro de la Congregación',
+        'Encontrado en la mesa del patio',
+        `— Preparación del séptimo umbral —\n\nLa casa fue construida sobre\nel punto de convergencia.\nLos cimientos no son piedra.\nSon intención.\n\nEl ritual requiere siete noches.\nLa séptima es la del umbral.\nEl que permanezca después\nno recordará haber cruzado.\n\n1963`,
+        9.015, 1.108, -2.717, -0.009, true
+    );
+
+    // Nota 3 — Sofá sala de estar — HORIZONTAL
+    createCollectableNote(
+        'nota_marcos',
+        'Nota de Marcos',
+        'Encontrada en el sofá',
+        `Si lees esto todavía estás\na tiempo de salir.\n\nYo no lo estaba.\n\nEl número en el baño\nno es decoración.\nEs el contador.\nCuando lo veas con\nla luz correcta,\nya casi es tarde.\n\nCorre.\n— M`,
+        -3.531, 0.851, -9.995, 0.151, true
+    );
+
+    // Nota 4 — Garaje mesa de trabajo — HORIZONTAL
+    createCollectableNote(
+        'instrucciones_garaje',
+        'Instrucciones manuscritas',
+        'Encontrada en el garaje',
+        `Para el siguiente inquilino:\n\nEl código cambia con cada\nciclo. Siete años, siete\ninquilinos, siete llaves.\n\nBusca la marca en el baño.\nNo con luz normal.\nElla te dirá el número.\n\nSi tu pareja dice que\ntodo está bien —\nno lo está.\n\n— Anónimo`,
+        9.282, 0.695, -23.772, -0.064, true
+    );
 }
 
-
-export function setUVNotesVisible(visible) {
-    const target = visible ? 0.9 : 0;
-    uvNotes.forEach(note => {
+// Mostrar/ocultar notas físicas según el modo UV
+export function setCollectableNotesVisible(visible) {
+    const target = visible ? 0.92 : 0;
+    collectableNotes.forEach(note => {
+        if (note.userData.collected) return; // ya recogida — no tocar
         const start = note.material.opacity;
         const steps = 20;
         let i = 0;

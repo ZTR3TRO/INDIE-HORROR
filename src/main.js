@@ -3,8 +3,8 @@ import { CONFIG } from './data/config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, spawnModelForEditing, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, ritualStoneMesh, uvLampMesh, uvBloodMark, loadUVLamp, loadUVBloodMark, animateUVLamp, setUVMarkVisible, loadUVNotes, setUVNotesVisible } from './scenes/level.js';
-import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly } from './ui/inventoryUI.js';
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, uvLampMesh, loadUVLamp, loadUVBloodMark, setUVMarkVisible, collectableNotes, loadCollectableNotes, setCollectableNotesVisible } from './scenes/level.js';
+import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly, collectNote, isInventoryOpen, closeInventory } from './ui/inventoryUI.js';
 import { updatePlayer, debugInfo, moveWithCollision, getWall, getFloor, getGroundY } from './core/player.js'; 
 import { initUI, ui } from './ui/ui.js';            
 import { initLaptop, toggleLaptopUI } from './ui/laptopUI.js'; 
@@ -49,7 +49,7 @@ createRain();
 initInventoryUI();
 loadUVLamp();
 loadUVBloodMark();
-loadUVNotes();
+loadCollectableNotes();
 initShadow();
 
 initStoneUI(() => {
@@ -74,13 +74,15 @@ let paranoiaTimer = 0;
 
 let hasKey = false;           
 let batteriesCollected = 0;   
+let doorHintShown = false;    // hint [E] INTERACTUAR en primera puerta
 let tutorialShown = false;    
 let powerOutageCall = false;      
 let powerOutageAnswered = false;  
 let powerRestored = false;
 let fuseboxUsed   = false;  // true después del colapso — nunca vuelve a activarse
 let isLaptopOpen = false;
-let isNumpadOpen = false; 
+let isNumpadOpen = false;
+let numpadDialogShown = false; // diálogo de Zare al cerrar el numpad — solo una vez
 let isBookOpen = false; 
 let isStoneOpen = false;
 let hasUVLamp   = false;        // tiene lámpara UV en inventario
@@ -134,7 +136,6 @@ if(startBtn) {
 renderer.domElement.addEventListener('click', () => {
     if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen) controls.lock();
     if ((gameState === 'ENDING_OUTSIDE' || gameState === 'ENDING_WAKE') && !controls.isLocked) {
-        // Solo intentar lockear — NO apagar flyMode porque es el fallback de movimiento
         try { controls.lock(); } catch(e) {}
     }
 });
@@ -196,7 +197,7 @@ function animate() {
 
         if (progress >= 0.95) eyeOpacity = 0;
         ui.setWakeOpacity(eyeOpacity);
-        if (progress >= 1.0) { gameState = 'PHONE_RINGING'; ui.setWakeOpacity(0); ui.showInteract(true); playSound('telefono'); }
+        if (progress >= 1.0) { gameState = 'PHONE_RINGING'; ui.setWakeOpacity(0); ui.showInteract(true, 'CONTESTAR'); playSound('telefono'); }
     }
 
     // Movimiento directo para ENDING_WAKE y ENDING_OUTSIDE
@@ -223,8 +224,8 @@ function animate() {
         }
     }
 
-    if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY') && !transformControls.dragging) {
-        if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen) updatePlayer(delta, input);
+    if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY')) {
+        if (controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !transformControls.dragging) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
         }
@@ -298,6 +299,45 @@ function animate() {
         }
 
         if (!tutorialShown && stateTimer > 2.0) { ui.showSubtitle("Presiona [ F ] para el Teléfono", 4000); tutorialShown = true; }
+
+        // Hint [E] INTERACTUAR al acercarse a la primera puerta
+        if (!doorHintShown) {
+            const nearDoor = getHoveredDoor();
+            if (nearDoor && camera.position.distanceTo(nearDoor.position) < 2.5) {
+                ui.showInteract(true, 'INTERACTUAR');
+                doorHintShown = true;
+                setTimeout(() => { ui.showInteract(false); }, 3000);
+            }
+        }
+
+        // Hint [E] RECOGER al acercarse a una nota — solo con UV activa
+        {
+            let nearNote = null;
+            if (uvMode === 'uv' && collectableNotes) {
+                for (const note of collectableNotes) {
+                    if (note.userData.collected || !note.visible) continue;
+                    const np = new THREE.Vector3();
+                    note.getWorldPosition(np);
+                    if (camera.position.distanceTo(np) < 2.2) {
+                        const camDir = new THREE.Vector3();
+                        camera.getWorldDirection(camDir);
+                        const toNote = new THREE.Vector3().subVectors(np, camera.position).normalize();
+                        if (camDir.dot(toNote) > 0.4) { nearNote = note; break; }
+                    }
+                }
+            }
+            if (nearNote) {
+                ui.showInteract(true, 'RECOGER');
+            } else {
+                const el = document.getElementById('interact-msg');
+                if (el && el.classList.contains('visible')) {
+                    const keyEl = document.getElementById('interact-key');
+                    if (keyEl && keyEl.textContent.includes('RECOGER')) {
+                        ui.showInteract(false);
+                    }
+                }
+            }
+        }
         
         if (!powerOutageCall && !powerRestored && stateTimer > 6.0) { 
             playSound('telefono'); 
@@ -398,9 +438,12 @@ input.actions.onInteract = () => {
                             playSound('objeto'); 
                             ui.showSubtitle(`Fusible recogido (${batteriesCollected}/3)`, 2000);
                             if (batteriesCollected === 3) {
+                                ui.setMission("Ve a la caja de fusibles en el garaje");
                                 setTimeout(() => {
                                     ui.showSubtitle("Zare: 'Tengo los fusibles. Iré a la caja.'", 5000);
                                 }, 2000);
+                            } else {
+                                ui.setMission(`Buscar los fusibles (${batteriesCollected}/3)`);
                             }
                         }
                     }
@@ -426,6 +469,60 @@ input.actions.onInteract = () => {
         const hitObject = hit ? hit.object : null;
         const hitDist = hit ? hit.distance : 999;
 
+        // 📞 SEGUNDA LLAMADA — tiene prioridad sobre pickups cercanos
+        if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain && !finalCallTriggered) {
+            stopSound('telefono');
+            phoneMesh.userData.isRingingAgain = false; 
+            powerOutageAnswered = true; 
+            ui.showCall(true);
+            playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
+                ui.showCall(false);
+                ui.setMission("Ve a la caja de fusibles en el garaje");
+            });
+            return;
+        }
+
+        // 📞 TERCERA LLAMADA
+        if (finalCallTriggered && !finalCallAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
+            stopSound('telefono');
+            phoneMesh.userData.isRingingAgain = false; 
+            finalCallAnswered = true; 
+            ui.showCall(true);
+            playDialogueSequence(ui, DIALOGUES.CALL_FINAL, () => {
+                ui.showCall(false);
+                ui.setMission("Escapa por la puerta principal");
+            });
+            return;
+        }
+
+        // 📄 NOTAS FÍSICAS — solo visibles y recogibles con UV activa
+        if (uvMode === 'uv' && collectableNotes && collectableNotes.length > 0) {
+            for (const note of collectableNotes) {
+                if (note.userData.collected) continue;
+                const notePos = new THREE.Vector3();
+                note.getWorldPosition(notePos);
+                const dist = camera.position.distanceTo(notePos);
+                if (dist < 2.2) {
+                    const camDir = new THREE.Vector3();
+                    camera.getWorldDirection(camDir);
+                    const toNote = new THREE.Vector3().subVectors(notePos, camera.position).normalize();
+                    if (camDir.dot(toNote) > 0.45) {
+                        note.userData.collected = true;
+                        note.visible = false;
+                        playSound('objeto');
+                        collectNote(
+                            note.userData.noteId,
+                            note.userData.noteTitle,
+                            note.userData.noteFoundAt,
+                            note.userData.noteBody
+                        );
+                        return;
+                    }
+                }
+            }
+        }
+
+
         let hitIsBook = false;
         let hitIsDoor = false;
         let hitNode = hitObject;
@@ -435,28 +532,61 @@ input.actions.onInteract = () => {
             hitNode = hitNode.parent;
         }
 
-        // 🪨 PIEDRAS RITUALES — raycast propio con distancia mayor
+        // 🪨 PIEDRAS RITUALES — detección por proximidad + raycast
         {
-            const stoneRay = new THREE.Raycaster();
-            stoneRay.setFromCamera(new THREE.Vector2(0, 0), camera);
-            stoneRay.far = 3.5; // más generoso para objetos en el suelo
-            const stoneHits = stoneRay.intersectObjects(collidableObjects, true);
+            // Primero buscar por proximidad directa a cada piedra
+            // Esto resuelve el problema de apuntar exactamente a geometría pequeña
             let hitStone = null;
-            for (const h of stoneHits) {
-                let node = h.object;
-                while (node) {
-                    if (node.userData.isRitualStone !== undefined) { hitStone = node; break; }
-                    node = node.parent;
+            let closestDist = 2.8; // distancia máxima de interacción
+
+            // Buscar en collidableObjects las piedras rituales
+            for (const obj of collidableObjects) {
+                if (obj.userData.isRitualStone === undefined) continue;
+                const stonePos = new THREE.Vector3();
+                obj.getWorldPosition(stonePos);
+                const dist = camera.position.distanceTo(stonePos);
+                if (dist < closestDist) {
+                    // Verificar que la cámara mire aproximadamente hacia la piedra
+                    const camDir = new THREE.Vector3();
+                    camera.getWorldDirection(camDir);
+                    const toStone = new THREE.Vector3().subVectors(stonePos, camera.position).normalize();
+                    if (camDir.dot(toStone) > 0.4) { // ángulo generoso ~66°
+                        closestDist = dist;
+                        hitStone = obj;
+                    }
                 }
-                if (hitStone) break;
             }
+
+            // Fallback: raycast con distancia generosa
+            if (!hitStone) {
+                const stoneRay = new THREE.Raycaster();
+                stoneRay.setFromCamera(new THREE.Vector2(0, 0), camera);
+                stoneRay.far = 3.0;
+                const stoneHits = stoneRay.intersectObjects(collidableObjects, true);
+                for (const h of stoneHits) {
+                    let node = h.object;
+                    while (node) {
+                        if (node.userData.isRitualStone !== undefined) { hitStone = node; break; }
+                        node = node.parent;
+                    }
+                    if (hitStone) break;
+                }
+            }
+
             if (hitStone) {
                 if (hitStone.userData.isRitualStone) {
                     isStoneOpen = true;
                     controls.unlock();
                     showStoneUI();
                 } else {
-                    ui.showSubtitle("Zare: 'Solo una piedra...'", 1500);
+                    // Mensajes variados para las piedras falsas
+                    const fakeMsgs = [
+                        "Zare: 'Solo una piedra...'",
+                        "Zare: 'Esta no es...'",
+                        "Zare: 'No, esta no tiene nada.'"
+                    ];
+                    const msg = fakeMsgs[Math.floor(Math.random() * fakeMsgs.length)];
+                    ui.showSubtitle(msg, 2000);
                 }
                 return;
             }
@@ -500,32 +630,6 @@ input.actions.onInteract = () => {
                 playSound('objeto'); 
                 controls.unlock(); 
             }
-            return;
-        }
-
-        // 📞 SEGUNDA LLAMADA
-        if (powerOutageCall && !powerOutageAnswered && phoneMesh && phoneMesh.userData.isRingingAgain && !finalCallTriggered) {
-            stopSound('telefono');
-            phoneMesh.userData.isRingingAgain = false; 
-            powerOutageAnswered = true; 
-            ui.showCall(true);
-            playDialogueSequence(ui, DIALOGUES.CALL_2, () => {
-                ui.showCall(false);
-                ui.setMission("Ve a la caja de fusibles en el garaje");
-            });
-            return;
-        }
-
-        // 📞 TERCERA LLAMADA
-        if (finalCallTriggered && !finalCallAnswered && phoneMesh && phoneMesh.userData.isRingingAgain) {
-            stopSound('telefono');
-            phoneMesh.userData.isRingingAgain = false; 
-            finalCallAnswered = true; 
-            ui.showCall(true);
-            playDialogueSequence(ui, DIALOGUES.CALL_FINAL, () => {
-                ui.showCall(false);
-                ui.setMission("Escapa por la puerta principal");
-            });
             return;
         }
 
@@ -584,6 +688,7 @@ input.actions.onInteract = () => {
                 }
             } else {
                 ui.showSubtitle(`Faltan fusibles (${batteriesCollected}/3)`, 3000);
+                ui.setMission(`Buscar los fusibles (${batteriesCollected}/3)`);
             }
             return;
         }
@@ -596,20 +701,16 @@ input.actions.onInteract = () => {
             
             const isGarageDoor = door.name.includes("Door_008") || door.name.includes("Door_08"); 
             const isMainDoor = door.name === "Door"; // puerta principal — nombre exacto
-            console.log(`🚪 Puerta detectada: "${door.name}" | isMain: ${isMainDoor} | isGarage: ${isGarageDoor} | finalCallAnswered: ${finalCallAnswered}`);
+
 
             if (isMainDoor) {
                 if (finalCallAnswered) { 
                     playSound('puerta_bloqueada'); 
-                    ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
                     if (!isNumpadOpen) {
                         isNumpadOpen = true;
                         ui.clearMission();
                         controls.unlock();
                         toggleNumpadUI(true);
-                        setTimeout(() => {
-                            ui.setMission("Buscar el código para escapar");
-                        }, 4000);
                     }
                     return;
                 } else {
@@ -638,42 +739,16 @@ input.actions.onInteract = () => {
     }
 };
 
-input.actions.onMakerSpawn = () => {
-    controls.unlock();
-    const model = prompt("1: Fusibles, 2: Teléfono, 3: Batería, 4: Llave, 5: Laptop");
-    if (model === "1") spawnModelForEditing('assets/models/caja_fusibles.glb');
-    if (model === "2") spawnModelForEditing('assets/models/phone.glb');
-    if (model === "3") spawnModelForEditing('assets/models/bateria_1.glb');
-    if (model === "4") spawnModelForEditing('assets/models/llave.glb');
-    if (model === "5") spawnModelForEditing('assets/models/laptop.glb'); 
+
+
+
+
+input.actions.onInventory = () => {
+    toggleInventory();
+    if (isInventoryOpen()) controls.unlock();
+    else setTimeout(() => { controls.lock(); }, 10);
 };
 
-// DEV: tecla B — toggle selección de uvBloodMark con TransformControls
-let uvMarkEditing = false;
-document.addEventListener('keydown', (e) => {
-    if (e.code !== 'KeyB' || !uvBloodMark) return;
-    if (!uvMarkEditing) {
-        // Seleccionar
-        uvMarkEditing = true;
-        uvBloodMark.material.opacity = 0.8;
-        uvBloodMark.scale.set(0.30, 0.30, 0.30); // restaurar scale correcto
-        transformControls.attach(uvBloodMark);
-        controls.unlock();
-        console.log('🩸 uvBloodMark seleccionado. T=mover R=rotar. B para soltar.');
-    } else {
-        // Soltar
-        uvMarkEditing = false;
-        transformControls.detach();
-        uvBloodMark.material.opacity = 0;
-        console.log('🩸 uvBloodMark soltado.');
-    }
-});
-
-input.actions.onInventory = () => { toggleInventory(); };
-input.actions.onCamCapture = () => {
-    console.log(`📷 POS: new THREE.Vector3(${camera.position.x.toFixed(3)}, ${camera.position.y.toFixed(3)}, ${camera.position.z.toFixed(3)})`);
-    console.log(`📷 ROT: new THREE.Euler(${camera.rotation.x.toFixed(3)}, ${camera.rotation.y.toFixed(3)}, ${camera.rotation.z.toFixed(3)})`);
-};
 
 input.actions.onFlashlight = () => {
     if (gameState !== 'GAMEPLAY') return;
@@ -684,6 +759,7 @@ input.actions.onFlashlight = () => {
         flashlight.color.setHex(0xffffff);
         flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY;
         setUVMarkVisible(false);
+        setCollectableNotesVisible(false);
         inventorySetFlashlightMode('normal');
     } else if (uvMode === 'normal') {
         if (hasUVLamp) {
@@ -691,14 +767,13 @@ input.actions.onFlashlight = () => {
             flashlight.color.setHex(0x7B00FF);
             flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY * 0.8;
             setUVMarkVisible(true);
-            setUVNotesVisible(true);
+            setCollectableNotesVisible(true);
             inventorySetFlashlightMode('uv');
-            // Primera vez que activa la UV — mostrar inventario brevemente
             showInventoryBriefly(2000);
         } else {
-            // Sin lámpara UV — apagar directo
             uvMode = 'off';
             flashlight.intensity = 0;
+            setCollectableNotesVisible(false);
             inventorySetFlashlightMode('off');
         }
     } else {
@@ -706,14 +781,11 @@ input.actions.onFlashlight = () => {
         flashlight.color.setHex(0xffffff);
         flashlight.intensity = 0;
         setUVMarkVisible(false);
-        setUVNotesVisible(false);
+        setCollectableNotesVisible(false);
         inventorySetFlashlightMode('off');
     }
 };
-input.actions.onLightUp = () => { ambientLight.intensity += 0.05; };
-input.actions.onLightDown = () => { ambientLight.intensity = Math.max(0, ambientLight.intensity - 0.05); };
-input.actions.onFogUp = () => { scene.fog.density += 0.002; };
-input.actions.onFogDown = () => { scene.fog.density = Math.max(0, scene.fog.density - 0.002); };
+
 
 function triggerExplosion() { 
     createExplosionEffect(); let f=0; 
@@ -726,66 +798,11 @@ function triggerExplosion() {
 document.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
 
-    // DEV: C — capturar posición y rotación de la cámara
-    if (e.code === 'KeyC') {
-        console.log(`📷 POS: new THREE.Vector3(${camera.position.x.toFixed(3)}, ${camera.position.y.toFixed(3)}, ${camera.position.z.toFixed(3)})`);
-        console.log(`📷 ROT: new THREE.Euler(${camera.rotation.x.toFixed(3)}, ${camera.rotation.y.toFixed(3)}, ${camera.rotation.z.toFixed(3)})`);
-    }
-
-    // DEV: Skip animaciones con Shift+S
-    if (e.shiftKey && key === 's') {
-        camera.position.copy(CONFIG.POSITIONS.SPAWN);
-        if (CONFIG.ROTATIONS.SPAWN) camera.rotation.copy(CONFIG.ROTATIONS.SPAWN);
-        ambientLight.intensity = 0.0;
-        flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY;
-        gameState = 'GAMEPLAY';
-        stateTimer = 0;
-        ui.setWakeOpacity(0);
-        ui.showCall(false);
-        ui.showBlackScreen(false);
-        controls.lock();
-        playSound('respiracion');
-        console.log('⚡ DEV: Skip a GAMEPLAY');
-        return;
-    }
-
-    // DEV: Shift+E — skip a GAMEPLAY con todo listo para poner el código
-    if (e.shiftKey && key === 'e') {
-        camera.position.copy(CONFIG.POSITIONS.SPAWN);
-        if (CONFIG.ROTATIONS.SPAWN) camera.rotation.copy(CONFIG.ROTATIONS.SPAWN);
-        ambientLight.intensity = 0.0;
-        flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY;
-        gameState = 'GAMEPLAY';
-        stateTimer = 0;
-        hasKey = true;
-        batteriesCollected = 3;
-        powerOutageCall = true;
-        powerOutageAnswered = true;
-        finalCallTriggered = true;
-        finalCallAnswered = true;  // puerta principal desbloqueada
-        ui.setWakeOpacity(0);
-        ui.showCall(false);
-        ui.showBlackScreen(false);
-        controls.lock();
-        playSound('respiracion');
-        console.log('⚡ DEV: Skip — ve a la puerta y pon el código');
-        return;
-    }
-
-    // DEV: Shift+R — skip directo al ending (simula numpadSuccess)
-    if (e.shiftKey && key === 'r') {
-        hasKey = true;
-        batteriesCollected = 3;
-        finalCallTriggered = true;
-        finalCallAnswered = true;
-        flashlight.intensity = CONFIG.ENV.FLASHLIGHT_INTENSITY;
-        playSound('respiracion');
-        document.dispatchEvent(new Event('numpadSuccess'));
-        console.log('⚡ DEV: Skip a ENDING');
-        return;
-    }
-
     if (key === 'q' || e.key === 'Escape') {
+        if (isInventoryOpen()) {
+            closeInventory();
+            setTimeout(() => { controls.lock(); }, 10);
+        }
         if (isLaptopOpen) {
             toggleLaptopUI(false);
             isLaptopOpen = false;
@@ -795,6 +812,14 @@ document.addEventListener('keydown', (e) => {
             toggleNumpadUI(false);
             isNumpadOpen = false;
             setTimeout(() => { controls.lock(); }, 10);
+            // Solo la primera vez que cierra el numpad — Zare reacciona
+            if (!numpadDialogShown) {
+                numpadDialogShown = true;
+                setTimeout(() => {
+                    ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
+                    setTimeout(() => { ui.setMission("Buscar el código para escapar"); }, 4000);
+                }, 300);
+            }
         }
         if (isBookOpen) { 
             toggleBookUI(false);
@@ -813,3 +838,60 @@ document.addEventListener('keydown', (e) => {
 });
 
 animate();
+// ─────────────────────────────────────────────────────────────────────────────
+//  EDITOR DE NOTAS — solo para posicionar, quitar antes de producción
+//  KeyC  → captura posición de cámara
+//  KeyN  → spawna plano de nota frente a la cámara y lo selecciona
+//  T     → modo mover   (TransformControls)
+//  R     → modo rotar
+//  KeyP  → imprime coords exactas listas para copiar
+//  KeyO  → deselecciona / elimina el preview
+// ─────────────────────────────────────────────────────────────────────────────
+let _noteEditorObj = null;
+
+document.addEventListener('keydown', (editorEvt) => {
+    if (editorEvt.code === 'KeyC') {
+        const p = camera.position;
+        const r = camera.rotation;
+        console.log(`📷 CAM  pos(${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)})  rotY(${r.y.toFixed(3)})`);
+        return;
+    }
+
+    if (editorEvt.code === 'KeyN') {
+        const geo = new THREE.PlaneGeometry(0.18, 0.22);
+        const mat = new THREE.MeshBasicMaterial({ color: 0xffee88, side: THREE.DoubleSide });
+        const mesh = new THREE.Mesh(geo, mat);
+        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+        mesh.position.copy(camera.position).addScaledVector(fwd, 1.2);
+        mesh.position.y -= 0.1;
+        mesh.rotation.y = camera.rotation.y;
+        mesh.name = 'note_editor_preview';
+        scene.add(mesh);
+        _noteEditorObj = mesh;
+        controls.unlock();
+        transformControls.attach(mesh);
+        transformControls.setMode('translate');
+        console.log('%c📄 NOTA spawneada — T=mover  R=rotar  P=copiar coords  O=soltar', 'color:#ffee88;font-weight:bold;');
+        return;
+    }
+
+    if (editorEvt.code === 'KeyT' && _noteEditorObj) { transformControls.setMode('translate'); return; }
+    if (editorEvt.code === 'KeyR' && _noteEditorObj) { transformControls.setMode('rotate');    return; }
+
+    if (editorEvt.code === 'KeyP' && _noteEditorObj) {
+        const p = _noteEditorObj.position;
+        const r = _noteEditorObj.rotation;
+        console.log('%c📋 COORDENADAS LISTAS:', 'color:#00ff88;font-weight:bold;font-size:14px;');
+        console.log(`%c  pos: ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}  rotY: ${r.y.toFixed(3)}`, 'color:#aaffaa;font-family:monospace;font-size:13px;');
+        console.log(`%c  createCollectableNote('id', 'Título', 'Encontrado en...', \`texto\`,\n    ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}, ${r.y.toFixed(3)});`, 'color:#88ffcc;font-family:monospace;');
+        return;
+    }
+
+    if (editorEvt.code === 'KeyO') {
+        transformControls.detach();
+        if (_noteEditorObj) { scene.remove(_noteEditorObj); _noteEditorObj = null; }
+        controls.lock();
+        console.log('📄 Editor soltado.');
+        return;
+    }
+});

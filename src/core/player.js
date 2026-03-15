@@ -247,7 +247,7 @@ export function getGroundY(floor, moveDir) {
 
 // ── updatePlayer ──────────────────────────────────────────────────────────────
 export function updatePlayer(delta, input) {
-    if (!controls.isLocked && !input.keys.flyMode) {
+    if (!controls.isLocked) {
         stopSound('pasos'); return;
     }
 
@@ -257,7 +257,7 @@ export function updatePlayer(delta, input) {
     rgt.y = 0; rgt.normalize();
 
     const spd  = input.keys.run ? CONFIG.PLAYER.SPEED.RUN : CONFIG.PLAYER.SPEED.WALK;
-    const spd2 = input.keys.flyMode ? CONFIG.PLAYER.SPEED.FLY : spd;
+    const spd2 = spd;
 
     const move = new THREE.Vector3();
     if (input.keys.forward)  move.add(fwd);
@@ -268,17 +268,8 @@ export function updatePlayer(delta, input) {
 
     debugInfo.speed = move.length() > 0 ? spd2 : 0;
 
-    // ── Fly ──────────────────────────────────────────────────────────────────
-    if (input.keys.flyMode) {
-        camera.position.addScaledVector(move, spd2 * delta);
-        if (input.keys.up)   camera.position.y += spd2 * delta;
-        if (input.keys.down) camera.position.y -= spd2 * delta;
-        verticalVelocity = 0; smoothY = null;
-        debugInfo.grounded = false; debugInfo.velocityY = 0;
-        playSound('pasos'); return;
-    }
 
-    // ── Movimiento horizontal con colisión ────────────────────────────────────
+    // Movimiento horizontal con colisión
     moveWithCollision(move.x * spd2 * delta, move.z * spd2 * delta, getWall());
 
     // ── Gravedad y suelo ──────────────────────────────────────────────────────

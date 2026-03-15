@@ -129,9 +129,8 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
                 }
             });
             setGameState('ENDING_WAKE');
-            // Usar flyMode — funciona sin necesitar pointer lock
-            // (el browser rechaza controls.lock() si no viene de un click directo)
-            input.keys.flyMode = true;
+            // El movimiento del ending usa endingKeys (definido en main.js)
+            // que funciona sin necesitar pointer lock
             ui.showSubtitle('[ Usa WASD para moverte ]', 4000);
         }, blackoutTime + 2000);
 
@@ -170,8 +169,7 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         setTimeout(() => {
             setGameState('ENDING_OUTSIDE');
             ui.setMission("Ve a la puerta principal");
-            // flyMode garantiza movimiento sin necesitar pointer lock
-            input.keys.flyMode = true;
+            // endingKeys maneja WASD sin pointer lock
         }, blackoutTime + 20000);
     });
 }

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { scene, camera } from '../core/world.js';
 import { playSound } from '../core/audio.js';
+import { showCredits } from './credits.js';
 
 export let shadowEntity = null;
 export let shadowApproaching = false;
@@ -106,7 +108,6 @@ export function initShadow() {
     darkLight.position.set(0, 1.5, 0);
     shadowEntity.add(darkLight);
 
-    console.log('👤 Sombra criatura lista');
 }
 
 // ── Update — llamar cada frame desde el animate loop ───────────────────────
@@ -150,12 +151,11 @@ export function triggerScreamer() {
         const f = document.createElement('div');
         f.style.cssText = 'position:fixed;inset:0;background:white;z-index:99999;opacity:1;';
         document.body.appendChild(f);
-        setTimeout(() => { f.style.background = 'black'; f.style.transition = 'opacity 1.5s'; }, 300);
-        setTimeout(() => { f.remove(); showCredits(); }, 2800);
+        setTimeout(() => { f.style.background = 'black'; }, 300);
+        // No remover el div — pasarlo a showCredits para que no haya gap
+        setTimeout(() => { showCredits(f); }, 2800);
         return;
     }
-    // Si spawnShadowStill ya la posicionó, solo arrancar el approach
-    // Si no estaba visible, posicionarla ahora
     if (!shadowEntity.visible) {
         shadowEntity.position.set(-5.429, 0.0, 5.660);
         shadowEntity.lookAt(new THREE.Vector3(camera.position.x, 0, camera.position.z));
@@ -177,138 +177,265 @@ function triggerScreamerFlash() {
     document.body.appendChild(img);
 
     setTimeout(() => { flash.remove(); }, 150);
-    setTimeout(() => { img.style.transition = 'opacity 1.5s'; img.style.opacity = '0'; }, 800);
+    // Fade-out de la imagen pero dejando el fondo negro del div — no se ve el juego
+    setTimeout(() => {
+        img.querySelector('img').style.cssText += 'transition:opacity 1.5s;opacity:0;';
+    }, 800);
     setTimeout(() => {
         if (shadowEntity) { scene.remove(shadowEntity); shadowEntity = null; }
-        img.remove();
-        showCredits();
+        // Pasar el div negro a showCredits para que no haya gap
+        showCredits(img);
     }, 2800);
 }
 
-// ── Créditos finales ────────────────────────────────────────────────────────
-export function showCredits() {
-    const credits = document.createElement('div');
-    credits.style.cssText = `
-        position: fixed; inset: 0; background: #000; z-index: 100000;
-        display: flex; flex-direction: column; align-items: center; justify-content: center;
-        font-family: 'Crimson Text', Georgia, serif;
-        opacity: 0; transition: opacity 2s ease;
-        overflow: hidden;
-    `;
+// ─────────────────────────────────────────────────────────────────────────────
+//  SISTEMA DE SOMBRAS DISTANTES — nuevo concepto
+//
+//  Las sombras SIEMPRE están en su posición desde el inicio.
+//  Los triggers las hacen DESAPARECER, no aparecer.
+//
+//  API:
+//    initDistantShadows()        — carga GLB y coloca todas las sombras en escena
+//    updateDistantShadows(delta) — gestiona fadeouts activos
+//    dismissShadow(id)           — trigger para hacer desaparecer una sombra (1.5s fade)
+//    startAmbientShadows()       — activa apariciones aleatorias (arranca post-colapso)
+//    updateAmbientShadows(delta) — loop de ambientales
+// ─────────────────────────────────────────────────────────────────────────────
 
-    credits.innerHTML = `
-        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Crimson+Text:ital,wght@0,400;1,400&display=swap" rel="stylesheet">
-        <style>
-            @keyframes creditsLine {
-                from { opacity: 0; transform: translateY(10px); }
-                to   { opacity: 1; transform: translateY(0); }
-            }
-            @keyframes loveAppear {
-                0%   { opacity: 0; transform: scale(0.95); }
-                100% { opacity: 1; transform: scale(1); }
-            }
-            @keyframes heartbeat {
-                0%, 100% { transform: scale(1); }
-                50%      { transform: scale(1.08); }
-            }
-            .c-line { opacity: 0; animation: creditsLine 1s ease forwards; }
-            .c-fin {
-                font-family: 'Cinzel', serif;
-                font-size: clamp(3rem, 8vw, 6rem);
-                font-weight: 900;
-                color: #cc0000;
-                letter-spacing: 0.5rem;
-                text-shadow: 0 0 40px rgba(200,0,0,0.5);
-                animation-delay: 0.3s;
-                margin-bottom: 0.5rem;
-            }
-            .c-subtitle {
-                font-family: 'Cinzel', serif;
-                font-size: clamp(0.6rem, 1.5vw, 0.85rem);
-                letter-spacing: 0.4rem;
-                color: #444;
-                text-transform: uppercase;
-                animation-delay: 1s;
-                margin-bottom: 3rem;
-            }
-            .c-by {
-                font-size: clamp(0.7rem, 1.5vw, 0.9rem);
-                color: #333;
-                letter-spacing: 0.15rem;
-                animation-delay: 1.8s;
-                margin-bottom: 0.4rem;
-            }
-            .c-name {
-                font-family: 'Cinzel', serif;
-                font-size: clamp(1rem, 2.5vw, 1.5rem);
-                color: #666;
-                letter-spacing: 0.3rem;
-                animation-delay: 2.2s;
-                margin-bottom: 4rem;
-            }
-            .c-love {
-                opacity: 0;
-                animation: loveAppear 2s ease forwards;
-                animation-delay: 4s;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                gap: 0.6rem;
-            }
-            .c-love-text {
-                font-family: 'Crimson Text', Georgia, serif;
-                font-style: italic;
-                font-size: clamp(1rem, 3vw, 1.5rem);
-                color: #555;
-                letter-spacing: 0.1rem;
-            }
-            .c-love-name {
-                font-family: 'Cinzel', serif;
-                font-size: clamp(1.8rem, 5vw, 3rem);
-                font-weight: 700;
-                color: #cc0000;
-                letter-spacing: 0.4rem;
-                text-shadow: 0 0 30px rgba(200,0,0,0.4);
-                animation: heartbeat 2s ease infinite;
-                animation-delay: 6s;
-            }
-            .c-heart {
-                font-size: 1.2rem;
-                color: #880000;
-                opacity: 0.7;
-            }
-            .c-restart {
-                font-family: 'Cinzel', serif;
-                font-size: 0.65rem;
-                color: #222;
-                letter-spacing: 0.3rem;
-                text-transform: uppercase;
-                opacity: 0;
-                animation: creditsLine 1s ease forwards;
-                animation-delay: 6.5s;
-                margin-top: 3rem;
-            }
-        </style>
+const SHADOW_MODEL_PATH = 'assets/models/entidad.glb';
+let _shadowTemplate = null;
+export let shadowModelReady = false;
 
-        <div class="c-line c-fin">FIN</div>
-        <div class="c-line c-subtitle">La Congregación del Séptimo Umbral</div>
-        <div class="c-line c-by">Un juego de</div>
-        <div class="c-line c-name">DANIEL LÓPEZ</div>
+// ── Definición de sombras scripted ───────────────────────────────────────────
+// Cada sombra tiene posición fija y está visible desde que inicia el GAMEPLAY.
+// Y_OFFSET sube el modelo para que quede sobre el suelo.
+const Y_OFFSET = 0.9; // ajustar según el modelo — sube la entidad
 
-        <div class="c-love">
-            <div class="c-heart">♥</div>
-            <div class="c-love-text">Para la persona que hace que todo valga la pena —</div>
-            <div class="c-love-name">Te amo, Zare</div>
-            <div class="c-heart">♥</div>
-        </div>
+const SCRIPTED_DEFS = {
+    hallway: {
+        pos: new THREE.Vector3(3.785, 5.0, -7.974),
+        rotY: -2.523 + Math.PI,
+    },
+    closet: {
+        pos: new THREE.Vector3(-2.805, 5.2, -9.441),
+        rotY: 3.141 + Math.PI,
+    },
+    garage: {
+        pos: new THREE.Vector3(-1.634, 1.9, -7.022),
+        rotY: -0.263 + Math.PI,
+        startHidden: true,
+    },
+    patio: {
+        pos: new THREE.Vector3(0.834, 1.0, -25.535),
+        rotY: 2.955 + Math.PI,
+    },
+};
 
-        <div class="c-restart">[ R ] Reiniciar</div>
-    `;
+// Sombras instanciadas: { id, mesh, fadingOut, fadeTimer }
+const _scripted = {};
 
-    document.body.appendChild(credits);
-    setTimeout(() => { credits.style.opacity = '1'; }, 100);
+// ── Construcción del modelo ───────────────────────────────────────────────────
 
-    document.addEventListener('keydown', (e) => {
-        if (e.code === 'KeyR') location.reload();
-    }, { once: true });
+function _applyBlackMaterial(group) {
+    group.traverse(c => {
+        if (!c.isMesh) return;
+        c.material = new THREE.MeshBasicMaterial({
+            color: 0x000000,
+            transparent: true,
+            opacity: 0.92,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+        });
+    });
+}
+
+function _setOpacity(group, op) {
+    group.traverse(c => {
+        if (c.isMesh && c.material) c.material.opacity = op;
+    });
+}
+
+function _buildProcedural() {
+    const g = buildShadowCreature();
+    g.traverse(c => {
+        if (!c.isMesh) return;
+        c.material = new THREE.MeshBasicMaterial({
+            color: 0x000000, transparent: true,
+            opacity: 0.92, side: THREE.DoubleSide, depthWrite: false,
+        });
+    });
+    return g;
+}
+
+function _placeAllScripted() {
+    Object.entries(SCRIPTED_DEFS).forEach(([id, def]) => {
+        const mesh = _shadowTemplate
+            ? (() => { const c = _shadowTemplate.clone(true); _applyBlackMaterial(c); return c; })()
+            : _buildProcedural();
+
+        const visible = !def.startHidden;
+        mesh.position.copy(def.pos);
+        mesh.rotation.set(0, def.rotY, 0);
+        mesh.visible = visible;
+        _setOpacity(mesh, visible ? 0.92 : 0);
+        scene.add(mesh);
+
+        _scripted[id] = { mesh, fadingOut: false, fadeTimer: 0 };
+    });
+    shadowModelReady = true;
+}
+
+export function initDistantShadows() {
+    const loader = new GLTFLoader();
+    loader.load(
+        SHADOW_MODEL_PATH,
+        (gltf) => {
+            _shadowTemplate = gltf.scene;
+            const box = new THREE.Box3().setFromObject(_shadowTemplate);
+            const h = box.max.y - box.min.y;
+            const scale = h > 0 ? 1.8 / h : 1.0;
+            _shadowTemplate.scale.setScalar(scale);
+            console.log(`✅ entidad.glb cargada. Escala auto: ${scale.toFixed(3)}`);
+            _placeAllScripted();
+        },
+        undefined,
+        (err) => {
+            console.warn('⚠️ entidad.glb no encontrada, usando procedural:', err.message || err);
+            _placeAllScripted();
+        }
+    );
+}
+
+// ── Hacer desaparecer una sombra scripted ─────────────────────────────────────
+export function dismissShadow(id) {
+    const s = _scripted[id];
+    if (!s || !s.mesh.visible) return;
+    s.mesh.visible = false;
+    _setOpacity(s.mesh, 0);
+}
+
+export function showShadow(id) {
+    const s = _scripted[id];
+    if (!s) return;
+    _setOpacity(s.mesh, 0.92);
+    s.mesh.visible = true;
+}
+
+// Sombra del garage — se acerca al jugador durante el blackout
+let _garageApproaching = false;
+const _GARAGE_SPEED = 0.6; // unidades por segundo — llega a ~3m en ~7s
+
+export function startGarageApproach() { _garageApproaching = true; }
+export function stopGarageApproach()  { _garageApproaching = false; }
+
+export function updateDistantShadows(delta) {
+    if (!_garageApproaching) return;
+    const s = _scripted['garage'];
+    if (!s || !s.mesh.visible) return;
+
+    // Mover hacia la posición del jugador en XZ, manteniendo Y fija
+    const target = new THREE.Vector3(camera.position.x, s.mesh.position.y, camera.position.z);
+    const dist = s.mesh.position.distanceTo(target);
+
+    // Parar a 2.5m del jugador — no llega a tocarlo
+    if (dist > 2.5) {
+        const dir = target.clone().sub(s.mesh.position).normalize();
+        s.mesh.position.addScaledVector(dir, _GARAGE_SPEED * delta);
+        // Rotar para mirar al jugador
+        s.mesh.rotation.y = Math.atan2(
+            camera.position.x - s.mesh.position.x,
+            camera.position.z - s.mesh.position.z
+        );
+    }
+}
+
+// ── Sistema ambient (post-colapso eléctrico) ──────────────────────────────────
+// Las sombras ambientales sí aparecen/desaparecen normalmente.
+const AMBIENT_DEFS = [
+    { pos: new THREE.Vector3(3.005,  2.1, -12.251), rotY: -3.076 + Math.PI },
+    { pos: new THREE.Vector3(8.230,  2.1, -12.243), rotY:  2.506 + Math.PI },
+    { pos: new THREE.Vector3(8.493,  2.1,  -1.348), rotY:  0.499 + Math.PI },
+    { pos: new THREE.Vector3(4.186,  2.1, -10.653), rotY: -1.122 + Math.PI },
+    { pos: new THREE.Vector3(5.504,  2.1, -15.006), rotY: -0.077 + Math.PI },
+    { pos: new THREE.Vector3(9.015,  5.7,  -5.332), rotY:  1.355 + Math.PI },
+    { pos: new THREE.Vector3(-5.535, 1.6, -26.577), rotY: -2.078 + Math.PI },
+];
+
+const _ambientActive = []; // { mesh, timer, fadingOut, fadeTimer }
+let _ambientRunning  = false;
+let _ambientTimer    = 0;
+let _ambientInterval = 30;
+let _lastAmbientIdx  = -1;
+
+export function startAmbientShadows() { _ambientRunning = true; }
+export function stopAmbientShadows()  { _ambientRunning = false; }
+
+// Fuerza spawn del spot ambient más cercano al jugador — solo para testing
+export function debugSpawnNearestAmbient() {
+    if (!shadowModelReady) return;
+    // Eliminar cualquier ambient activa inmediatamente
+    _ambientActive.forEach(e => { scene.remove(e.mesh); });
+    _ambientActive.length = 0;
+
+    let nearest = AMBIENT_DEFS[0];
+    let minDist = Infinity;
+    AMBIENT_DEFS.forEach(def => {
+        const d = camera.position.distanceTo(def.pos);
+        if (d < minDist) { minDist = d; nearest = def; }
+    });
+    const mesh = _buildAmbientMesh();
+    mesh.position.copy(nearest.pos);
+    mesh.rotation.set(0, nearest.rotY, 0);
+    _setOpacity(mesh, 0.92);
+    mesh.visible = true;
+    _ambientActive.push({ mesh, timer: 0, fadingOut: false, fadeTimer: 0, duration: 3.0 });
+    console.log(`🧪 Ambient en (${nearest.pos.x.toFixed(1)}, ${nearest.pos.y.toFixed(1)}, ${nearest.pos.z.toFixed(1)}) — dist: ${minDist.toFixed(1)}m`);
+}
+
+function _buildAmbientMesh() {
+    const mesh = _shadowTemplate
+        ? (() => { const c = _shadowTemplate.clone(true); _applyBlackMaterial(c); return c; })()
+        : _buildProcedural();
+    scene.add(mesh);
+    return mesh;
+}
+
+export function updateAmbientShadows(delta) {
+    // Update ambientales activas
+    for (let i = _ambientActive.length - 1; i >= 0; i--) {
+        const e = _ambientActive[i];
+        e.timer += delta;
+        if (!e.fadingOut) {
+            if (e.timer > e.duration) { e.fadingOut = true; e.fadeTimer = 0; }
+        } else {
+            e.fadeTimer += delta;
+            const t = Math.min(e.fadeTimer / 1.0, 1.0);
+            _setOpacity(e.mesh, (1 - t) * 0.92);
+            if (t >= 1.0) {
+                scene.remove(e.mesh);
+                _ambientActive.splice(i, 1);
+            }
+        }
+    }
+
+    if (!_ambientRunning || !shadowModelReady) return;
+    _ambientTimer += delta;
+    if (_ambientTimer < _ambientInterval) return;
+    _ambientTimer    = 0;
+    _ambientInterval = 30 + Math.random() * 30; // 30–60s
+
+    let idx;
+    let tries = 0;
+    do { idx = Math.floor(Math.random() * AMBIENT_DEFS.length); tries++; }
+    while (idx === _lastAmbientIdx && tries < 10);
+    _lastAmbientIdx = idx;
+
+    const def  = AMBIENT_DEFS[idx];
+    const mesh = _buildAmbientMesh();
+    mesh.position.copy(def.pos);
+    mesh.rotation.set(0, def.rotY, 0);
+    _setOpacity(mesh, 0.92);
+    mesh.visible = true;
+    _ambientActive.push({ mesh, timer: 0, fadingOut: false, fadeTimer: 0, duration: 8.0 });
+    console.log(`👁 Sombra ambient en (${def.pos.x.toFixed(1)}, ${def.pos.y.toFixed(1)}, ${def.pos.z.toFixed(1)})`);
 }

@@ -16,18 +16,18 @@ export const DIALOGUES = {
         { text: "Daniel: 'Amor hubo un apagón en toda la ciudad, ¿todo bien en casa?'", duration: 4000, startAt: 0 },
         { text: "Zare: 'Sí... explotó algo cerca. Se fue la luz.'", duration: 3500, startAt: 4500 },
         { text: "Zare: 'Pero Daniel, te juro que escuché pasos en el pasillo... ¡Tengo miedo!'", duration: 4500, startAt: 8500 },
-        { text: "Daniel: 'Tranquila, es tu imaginación. Revisa los fusibles, quizás solo hay que cambiarlo...'", duration: 4500, startAt: 13500 },
-        { text: "Daniel: 'La caja de fusibles está en el garage.'", duration: 3500, startAt: 18500 },
+        { text: "Daniel: 'Tranquila, es tu imaginación. Revisa los fusibles, hay que cambiarlos...'", duration: 4500, startAt: 13500 },
+        { text: "Daniel: 'La caja de fusibles está en el garaje.'", duration: 3500, startAt: 18500 },
         { text: "Zare: 'Okey, lo haré. Apresúrate por favor.'", duration: 3500, startAt: 22500 }
     ],
 
-    // 👇 NUEVA: Llamada 3 (La revelación de la cámara)
+    // Llamada 3 (La revelación de la cámara)
     CALL_FINAL: [
         { text: "Daniel: '¡Zare! ¡Zare contesta!'", duration: 3000, startAt: 0 },
-        { text: "Zare: '¡La luz volvió a morir! ¡Te dije que había alguien aquí!'", duration: 4000, startAt: 3000 },
-        { text: "Daniel: 'Escúchame... la cámara de la sala subió un clip a la nube justo antes de la explosión...'", duration: 5500, startAt: 7500 },
-        { text: "Daniel: 'Había alguien muy alto... parado detrás de ti en la oscuridad. ¡SAL DE LA CASA AHORA MISMO!'", duration: 6000, startAt: 13500 },
-        { text: "Zare: '¡Dios mío! ¡Voy a la puerta principal!'", duration: 3500, startAt: 20000 }
+        { text: "Zare: '¡La luz volvió a morir! ¡Daniel, te juro que vi algo... no sé si estoy perdiendo la cabeza!'", duration: 5000, startAt: 3000 },
+        { text: "Daniel: 'Escúchame... la cámara de la sala subió un clip a la nube justo antes de la explosión...'", duration: 5500, startAt: 8500 },
+        { text: "Daniel: 'No estás loca. Había algo muy alto parado detrás de ti. Lleva horas ahí. ¡SAL AHORA!'", duration: 5500, startAt: 14500 },
+        { text: "Zare: '¡Dios mío... sabía que no era mi imaginación! ¡Voy a la puerta!'", duration: 4000, startAt: 20500 }
     ],
 
     // Frases sueltas para el sistema de paranoia
@@ -38,8 +38,8 @@ export const DIALOGUES = {
         "Zare: 'Solo es el viento... espero.'"
     ],
     PARANOIA_PUERTA: [
-        "Zare: '¿Qué fue eso...?'",
-        "Zare: '¿Se cerró una puerta?'",
+        "Zare: 'Juro que escuché moverse algo...'",
+        "Zare: '¿Se movió eso solo?'",
         "Zare: 'Daniel dijo que era la madera vieja... sí, solo eso.'",
         "Zare: 'Odio esta casa.'"
     ]

@@ -175,71 +175,7 @@ kbd {
     letter-spacing: 0.05rem;
 }
 
-/* Botón */
-#startBtn {
-    position: relative;
-    padding: 0.9rem 4rem;
-    font-family: 'Cinzel', serif;
-    font-size: 1rem;
-    font-weight: 700;
-    letter-spacing: 0.3rem;
-    text-transform: uppercase;
-    background: transparent;
-    color: #fff;
-    border: 1px solid rgba(180,0,0,0.6);
-    cursor: pointer;
-    overflow: hidden;
-    transition: all 0.3s ease;
-    margin-bottom: 2rem;
-}
-
-#startBtn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(135deg, rgba(140,0,0,0.15) 0%, transparent 60%);
-    transition: opacity 0.3s;
-}
-
-#startBtn::after {
-    content: '';
-    position: absolute;
-    bottom: 0; left: 0;
-    width: 0; height: 1px;
-    background: #cc0000;
-    transition: width 0.4s ease;
-}
-
-#startBtn:hover {
-    border-color: #cc0000;
-    color: #fff;
-    text-shadow: 0 0 15px rgba(200,0,0,0.6);
-    box-shadow: 0 0 25px rgba(180,0,0,0.2), inset 0 0 20px rgba(180,0,0,0.05);
-}
-
-#startBtn:hover::after {
-    width: 100%;
-}
-
-.btn-flicker {
-    margin-left: 0.5rem;
-    animation: btnFlicker 2s infinite;
-    color: #880000;
-}
-
-@keyframes btnFlicker {
-    0%, 90%, 100% { opacity: 1; }
-    92%           { opacity: 0; }
-    95%           { opacity: 1; }
-    97%           { opacity: 0; }
-}
-
-.menu-warning {
-    font-size: 0.75rem;
-    color: #444;
-    letter-spacing: 0.05rem;
-    font-style: italic;
-}
+/* Botón — manejado en index.html */
 
 /* ── CROSSHAIR ───────────────────────────────────────────── */
 #crosshair {

@@ -3,7 +3,7 @@ import { CONFIG } from './data/config.js';
 import { InputManager } from './core/input.js';
 import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
-import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, uvLampMesh, loadUVLamp, loadUVBloodMark, setUVMarkVisible, collectableNotes, loadCollectableNotes, setCollectableNotesVisible } from './scenes/level.js';
+import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, uvLampMesh, loadUVLamp, loadUVBloodMark, setUVMarkVisible, collectableNotes, loadCollectableNotes, setCollectableNotesVisible, doors } from './scenes/level.js';
 import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly, collectNote, isInventoryOpen, closeInventory } from './ui/inventoryUI.js';
 import { updatePlayer, debugInfo, moveWithCollision, getWall, getFloor, getGroundY } from './core/player.js'; 
 import { initUI, ui } from './ui/ui.js';            
@@ -14,7 +14,10 @@ import { initStoneUI, showStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
 import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 import { DIALOGUES, playDialogueSequence } from './data/dialogues.js';
-import { initShadow, updateShadow, triggerScreamer } from './effects/screamer.js';
+import { initShadow, updateShadow, triggerScreamer, initDistantShadows, updateDistantShadows, dismissShadow, showShadow, startGarageApproach, stopGarageApproach, startAmbientShadows, updateAmbientShadows, debugSpawnNearestAmbient } from './effects/screamer.js';
+import { showCredits } from './effects/credits.js';
+import { showSplash } from './effects/splash.js';
+import { initFuseboxUI, toggleFuseboxUI, insertFuseInSlot } from './ui/fuseboxui.js';
 import { initEnding } from './scenes/ending.js';
 
 initWorld(); 
@@ -51,6 +54,8 @@ loadUVLamp();
 loadUVBloodMark();
 loadCollectableNotes();
 initShadow();
+initDistantShadows();
+initFuseboxUI();
 
 initStoneUI(() => {
     ui.showSubtitle("Zare: '...¿Qué significa este número?'", 3000);
@@ -85,6 +90,7 @@ let isNumpadOpen = false;
 let numpadDialogShown = false; // diálogo de Zare al cerrar el numpad — solo una vez
 let isBookOpen = false; 
 let isStoneOpen = false;
+let isFuseboxOpen = false;
 let hasUVLamp   = false;        // tiene lámpara UV en inventario
 let uvMode      = 'off';        // 'off' | 'normal' | 'uv'
 
@@ -110,31 +116,34 @@ document.addEventListener('keyup', (e) => {
 
 const startBtn = document.getElementById('startBtn');
 if(startBtn) {
-    startBtn.addEventListener('click', () => { 
-        document.getElementById('menu').style.display = 'none'; 
-        controls.lock(); 
-        ui.setWakeOpacity(1); 
-        gameState = 'WAKING_UP'; 
-        stateTimer = 0; 
-        playSound('lluvia');
-        // Encender focos de la casa al inicio — se apagarán tras la explosión
-        setTimeout(() => {
-            houseLights.forEach(item => { 
-                item.light.intensity = 3.0;
-                item.light.distance = 18;
-                if (item.mesh.material) {
-                    item.mesh.material.emissive.setHex(0xffaa00);
-                    item.mesh.material.emissiveIntensity = 1.5;
-                }
-            });
-            streetLights.forEach(item => { item.light.intensity = 15.0; item.mesh.material.emissiveIntensity = 4.0; });
-            ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM;
-        }, 500);
+    startBtn.addEventListener('click', () => {
+        document.getElementById('menu').style.display = 'none';
+        controls.lock();
+        gameState = 'INTRO';
+        stateTimer = 0;
+        showSplash(() => {
+            ui.setWakeOpacity(1);
+            gameState = 'WAKING_UP';
+            stateTimer = 0;
+            playSound('lluvia');
+            setTimeout(() => {
+                houseLights.forEach(item => {
+                    item.light.intensity = 3.0;
+                    item.light.distance = 18;
+                    if (item.mesh.material) {
+                        item.mesh.material.emissive.setHex(0xffaa00);
+                        item.mesh.material.emissiveIntensity = 1.5;
+                    }
+                });
+                streetLights.forEach(item => { item.light.intensity = 15.0; item.mesh.material.emissiveIntensity = 4.0; });
+                ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM;
+            }, 500);
+        });
     });
 }
 
 renderer.domElement.addEventListener('click', () => {
-    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen) controls.lock();
+    if ((gameState === 'PHONE_RINGING' || gameState === 'GAMEPLAY') && !controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !isFuseboxOpen) controls.lock();
     if ((gameState === 'ENDING_OUTSIDE' || gameState === 'ENDING_WAKE') && !controls.isLocked) {
         try { controls.lock(); } catch(e) {}
     }
@@ -171,6 +180,8 @@ function animate() {
     animateRain();
     animateExplosion(delta);
     updateShadow(delta);
+    updateDistantShadows(delta);
+    updateAmbientShadows(delta);
     if (scene.userData.endingUpdate) scene.userData.endingUpdate(delta);
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
@@ -178,6 +189,17 @@ function animate() {
     // Fondo animado del menú — paneo lento y atmosférico
     if (gameState === 'START') {
         camera.rotation.y -= delta * 0.008; // giro muy lento
+    }
+
+    // Intro cinemática — cámara orbita alrededor de la casa
+    if (gameState === 'INTRO') {
+        stateTimer += delta;
+        const angle = -0.654 + stateTimer * 0.06; // muy lento
+        const radius = 22;
+        camera.position.x = Math.sin(angle) * radius;
+        camera.position.z = Math.cos(angle) * radius;
+        camera.position.y = 8;
+        camera.lookAt(0, 2, 0);
     }
 
     if (gameState === 'WAKING_UP') {
@@ -203,7 +225,7 @@ function animate() {
     // Movimiento directo para ENDING_WAKE y ENDING_OUTSIDE
     // Evita por completo InputManager y PointerLock — pero sí respeta colisiones
     if (gameState === 'ENDING_WAKE' || gameState === 'ENDING_OUTSIDE') {
-        const spd = 2.5 * delta;
+        const spd = 1.4 * delta;
         const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
         fwd.y = 0; fwd.normalize();
         const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -225,7 +247,7 @@ function animate() {
     }
 
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY')) {
-        if (controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !transformControls.dragging) updatePlayer(delta, input);
+        if (controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !isFuseboxOpen && !transformControls.dragging) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
         }
@@ -435,7 +457,7 @@ input.actions.onInteract = () => {
                             batteriesCollected++;
                             batteryCollectedThisFrame = true;
                             inventorySetBatteries(batteriesCollected);
-                            playSound('objeto'); 
+                            playSound('objeto');
                             ui.showSubtitle(`Fusible recogido (${batteriesCollected}/3)`, 2000);
                             if (batteriesCollected === 3) {
                                 ui.setMission("Ve a la caja de fusibles en el garaje");
@@ -639,56 +661,11 @@ input.actions.onInteract = () => {
                 ui.showSubtitle('La caja está quemada. Ya no funciona.', 3000);
                 return;
             }
-            if (batteriesCollected === 3) {
-                if (!powerRestored) {
-                    powerRestored = true;
-                    ui.showSubtitle("SISTEMA REINICIADO", 3000);
-                    playSound('zumbido_electrico'); 
-
-                    houseLights.forEach(item => {
-                        item.light.intensity = 1.5; 
-                        if(item.mesh.material) {
-                            item.mesh.material.emissive.setHex(0xffaa00);
-                            item.mesh.material.emissiveIntensity = 1;
-                        }
-                    });
-                    ambientLight.intensity = 0.05;
-
-                    const blackoutLoop = setInterval(() => {
-                        houseLights.forEach(item => {
-                            if (Math.random() > 0.5) {
-                                item.light.intensity = Math.random() * 2; 
-                                if(item.mesh.material) item.mesh.material.emissiveIntensity = 1;
-                            } else {
-                                item.light.intensity = 0;
-                                if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
-                            }
-                        });
-                        if (Math.random() > 0.7) playSound('chispazo'); 
-                        if (Math.random() > 0.8) houseLights.forEach(item => { item.light.intensity = 0; });
-                    }, 100); 
-
-                    setTimeout(() => {
-                        clearInterval(blackoutLoop); 
-                        powerRestored = false;
-                        fuseboxUsed   = true;  // sellada — no vuelve a activarse
-                        houseLights.forEach(item => {
-                            item.light.intensity = 0;
-                            if(item.mesh.material) item.mesh.material.emissiveIntensity = 0;
-                        });
-                        ambientLight.intensity = 0;
-                        stopSound('zumbido_electrico'); 
-                        ui.showSubtitle("El sistema colapsó por completo...", 5000);
-                        setTimeout(() => {
-                            playSound('telefono');
-                            finalCallTriggered = true;
-                            if(phoneMesh) phoneMesh.userData.isRingingAgain = true;
-                        }, 5000);
-                    }, 15000); 
-                }
-            } else {
-                ui.showSubtitle(`Faltan fusibles (${batteriesCollected}/3)`, 3000);
-                ui.setMission(`Buscar los fusibles (${batteriesCollected}/3)`);
+            // Abrir modal de la caja
+            if (!isFuseboxOpen) {
+                isFuseboxOpen = true;
+                controls.unlock();
+                toggleFuseboxUI(true, batteriesCollected);
             }
             return;
         }
@@ -699,8 +676,11 @@ input.actions.onInteract = () => {
             const dist = camera.position.distanceTo(door.position);
             if (dist > 2.5) return;
             
-            const isGarageDoor = door.name.includes("Door_008") || door.name.includes("Door_08"); 
-            const isMainDoor = door.name === "Door"; // puerta principal — nombre exacto
+            const isGarageDoor  = door.name === 'Garage_Door';
+            const isGarage2Door = door.name.includes("Door_008") || door.name.includes("Door_08");
+            const isMainDoor    = door.name === "Door";
+            const isClosetDoor  = door.name === "Door_002"; // closet 2do piso — confirmado con KeyD
+            const isHallwayDoor = door.name === "Door_001"; // puerta del pasillo 2do piso
 
 
             if (isMainDoor) {
@@ -720,20 +700,23 @@ input.actions.onInteract = () => {
                 }
             }
 
-            if (isGarageDoor && !door.userData.isOpen) {
-                if (!hasKey) { 
+            if ((isGarageDoor || isGarage2Door) && !door.userData.isOpen) {
+                if (!hasKey && isGarageDoor) { 
                     playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: 'Maldición, tiene candado... necesito buscar la llave.'", 4000); 
                     setTimeout(() => {
                         ui.setMission("Buscar la llave del garaje");
                     }, 4000);
                     return; 
-                } else { 
-                    ui.showSubtitle("Abriendo con la llave...", 2000); 
+                } else if (isGarageDoor) { 
+                    ui.showSubtitle("Abriendo con la llave...", 2000);
                 }
             }
 
-            toggleDoor(door); 
+            toggleDoor(door);
+            if (isClosetDoor)  setTimeout(() => dismissShadow('closet'),  350);
+            if (isHallwayDoor) setTimeout(() => dismissShadow('hallway'), 500);
+            if (isGarage2Door) setTimeout(() => dismissShadow('patio'),   5000); // Door_008 — patio
             return;
         }
     }
@@ -834,7 +817,100 @@ document.addEventListener('keydown', (e) => {
             isStoneOpen = false;
             setTimeout(() => { controls.lock(); }, 10);
         }
+        if (isFuseboxOpen) {
+            toggleFuseboxUI(false);
+            isFuseboxOpen = false;
+            setTimeout(() => { controls.lock(); }, 10);
+        }
     }
+});
+
+// ⚡ Activar fusebox desde el modal
+document.addEventListener('fuseboxActivate', () => {
+    isFuseboxOpen = false;
+    if (batteriesCollected < 3) {
+        ui.showSubtitle(`Faltan fusibles (${batteriesCollected}/3)`, 3000);
+        setTimeout(() => controls.lock(), 10);
+        return;
+    }
+    if (powerRestored || fuseboxUsed) return;
+
+    setTimeout(() => controls.lock(), 10);
+    powerRestored = true;
+    ui.showSubtitle("SISTEMA REINICIADO", 3000);
+    playSound('zumbido_electrico');
+
+    houseLights.forEach(item => {
+        item.light.intensity = 1.5;
+        if (item.mesh.material) {
+            item.mesh.material.emissive.setHex(0xffaa00);
+            item.mesh.material.emissiveIntensity = 1;
+        }
+    });
+    ambientLight.intensity = 0.05;
+
+    showShadow('garage');
+    setTimeout(() => startGarageApproach(), 2000);
+    setTimeout(() => ui.showSubtitle("Entidad: '...Zare...'", 3000), 4000);
+
+    const blackoutLoop = setInterval(() => {
+        houseLights.forEach(item => {
+            if (Math.random() > 0.5) {
+                item.light.intensity = Math.random() * 2;
+                if (item.mesh.material) item.mesh.material.emissiveIntensity = 1;
+            } else {
+                item.light.intensity = 0;
+                if (item.mesh.material) item.mesh.material.emissiveIntensity = 0;
+            }
+        });
+        if (Math.random() > 0.7) playSound('chispazo');
+        if (Math.random() > 0.8) houseLights.forEach(item => { item.light.intensity = 0; });
+    }, 100);
+
+    setTimeout(() => {
+        clearInterval(blackoutLoop);
+        powerRestored = false;
+        fuseboxUsed = true;
+        houseLights.forEach(item => {
+            item.light.intensity = 0;
+            if (item.mesh.material) item.mesh.material.emissiveIntensity = 0;
+        });
+        ambientLight.intensity = 0;
+        stopSound('zumbido_electrico');
+        ui.showSubtitle("El sistema colapsó por completo...", 5000);
+        stopGarageApproach();
+        dismissShadow('garage');
+        dismissShadow('closet');
+        startAmbientShadows();
+        setTimeout(() => {
+            playSound('telefono');
+            finalCallTriggered = true;
+            if (phoneMesh) phoneMesh.userData.isRingingAgain = true;
+        }, 5000);
+    }, 15000);
+});
+
+// Slot de fusible llenado desde el modal
+document.addEventListener('fuseSlotFilled', () => {
+    // No hace falta cambiar batteriesCollected — ya los tiene recolectados
+    // Solo actualizamos el dataset para que los clicks siguientes sepan cuántos quedan
+    const el = document.getElementById('fuseboxUI');
+    if (el) el.dataset.available = batteriesCollected;
+});
+
+// Intro — cuando el negro desaparece, encender luces para ver la casa
+document.addEventListener('splashRevealScene', () => {
+    houseLights.forEach(item => {
+        item.light.intensity = 3.0;
+        item.light.distance = 18;
+        if (item.mesh.material) {
+            item.mesh.material.emissive.setHex(0xffaa00);
+            item.mesh.material.emissiveIntensity = 1.5;
+        }
+    });
+    streetLights.forEach(item => { item.light.intensity = 15.0; item.mesh.material.emissiveIntensity = 4.0; });
+    ambientLight.intensity = CONFIG.ENV.AMBIENT_DIM;
+    playSound('lluvia');
 });
 
 animate();
@@ -850,6 +926,12 @@ animate();
 let _noteEditorObj = null;
 
 document.addEventListener('keydown', (editorEvt) => {
+    // Shift+C — saltar directo a los créditos (DEV)
+    if (editorEvt.shiftKey && editorEvt.code === 'KeyC') {
+        showCredits();
+        return;
+    }
+
     if (editorEvt.code === 'KeyC') {
         const p = camera.position;
         const r = camera.rotation;
@@ -884,6 +966,33 @@ document.addEventListener('keydown', (editorEvt) => {
         console.log('%c📋 COORDENADAS LISTAS:', 'color:#00ff88;font-weight:bold;font-size:14px;');
         console.log(`%c  pos: ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}  rotY: ${r.y.toFixed(3)}`, 'color:#aaffaa;font-family:monospace;font-size:13px;');
         console.log(`%c  createCollectableNote('id', 'Título', 'Encontrado en...', \`texto\`,\n    ${p.x.toFixed(3)}, ${p.y.toFixed(3)}, ${p.z.toFixed(3)}, ${r.y.toFixed(3)});`, 'color:#88ffcc;font-family:monospace;');
+        return;
+    }
+
+    // KeyX — forzar spawn de sombra ambient en el spot más cercano (testing)
+    if (editorEvt.code === 'KeyX') {
+        debugSpawnNearestAmbient();
+        return;
+    }
+
+    // KeyZ — listar todas las puertas con nombre y posición (editor)
+    if (editorEvt.code === 'KeyZ') {
+        if (doors.length === 0) {
+            console.log('%c🚪 No hay puertas cargadas todavía.', 'color:#ff8888;');
+            return;
+        }
+        console.log('%c🚪 PUERTAS DEL NIVEL:', 'color:#88ccff;font-weight:bold;font-size:14px;');
+        doors.forEach((door, i) => {
+            const p = door.position;
+            const worldPos = new THREE.Vector3();
+            door.getWorldPosition(worldPos);
+            const dist = camera.position.distanceTo(worldPos);
+            const isNear = dist < 3.0 ? '👈 CERCA' : '';
+            console.log(
+                `%c  [${i}] "${door.name}"  pos(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}, ${worldPos.z.toFixed(2)})  dist: ${dist.toFixed(1)}m  ${isNear}`,
+                dist < 3.0 ? 'color:#ffff88;font-family:monospace;' : 'color:#888888;font-family:monospace;'
+            );
+        });
         return;
     }
 

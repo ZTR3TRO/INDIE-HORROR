@@ -15,7 +15,7 @@ export let laptopWorldPosition = new THREE.Vector3();
 export let uvLampMesh          = null;   // pickup lámpara UV
 export let uvBloodMark         = null;   // marca "4" en el baño (solo visible con UV)
 
-let doors = [];
+export let doors = [];
 const loader = new GLTFLoader();
 
 // ─────────────────────────────────────────────────────────────────────────────

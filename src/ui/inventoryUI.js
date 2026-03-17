@@ -263,16 +263,10 @@ export function initInventoryUI() {
     `;
     document.body.appendChild(modal);
 
-    // Slots vacíos base (8 huecos)
-    const panelItems = document.getElementById('panel-items');
-    const slotOrder  = ['flashlight', 'key', 'batteries', 'uvlamp'];
-    slotOrder.forEach(id => _createSlot(id));
-    // Slots vacíos de relleno
-    for (let i = 0; i < 4; i++) {
-        const empty = document.createElement('div');
-        empty.className = 'inv-slot';
-        panelItems.appendChild(empty);
-    }
+    // Los slots se crean dinámicamente cuando se recoge el item (inventoryCollect).
+    // Aquí no se pre-generan — el panel empieza vacío.
+    // El teléfono (flashlight) se tiene desde el inicio, crearlo ya.
+    _createSlot('flashlight');
 
     // Tabs
     modal.querySelectorAll('.inv-tab').forEach(tab => {
@@ -308,6 +302,9 @@ export function openInventory()  {
     modalOpen = true;
     document.getElementById('inv-modal')?.classList.add('open');
 }
+
+// Exportar si el lector de nota está activo — main.js lo usa para Tab
+export function isNoteReaderOpen() { return noteReaderOpen; }
 
 export function closeInventory() {
     modalOpen = false;
@@ -364,6 +361,8 @@ function _blinkSlot(id) {
 export function inventoryCollect(itemId) {
     if (!ITEMS[itemId]) return;
     ITEMS[itemId].collected = true;
+    // Crear el slot si aún no existe (primera vez que se recoge el item)
+    _createSlot(itemId);
     const slot = document.getElementById(`inv-slot-${itemId}`);
     if (slot) {
         slot.classList.add('has-item');
@@ -375,6 +374,8 @@ export function inventoryCollect(itemId) {
 export function inventorySetBatteries(count) {
     ITEMS.batteries.count     = count;
     ITEMS.batteries.collected = count > 0;
+    // Crear slot la primera vez que se recoge un fusible
+    if (count > 0) _createSlot('batteries');
     for (let i = 0; i < 3; i++) {
         document.getElementById(`bat-pip-${i}`)?.classList.toggle('on', i < count);
     }
@@ -446,7 +447,13 @@ function _openNoteReader(note) {
     document.getElementById('note-reader-body').textContent  = note.body;
     document.getElementById('note-reader').classList.add('active');
     document.getElementById('notes-list').style.display      = 'none';
+    // Actualizar hint del footer: Tab vuelve a la lista
+    const footer = document.getElementById('inv-footer');
+    if (footer) footer.textContent = '[ TAB ] VOLVER A NOTAS  ·  [ Q ] CERRAR';
 }
+
+// Exportada para que main.js pueda usarla con Tab cuando el lector está abierto
+export function goBackFromNote() { _closeNoteReader(); }
 
 function _closeNoteReader() {
     noteReaderOpen = false;
@@ -454,6 +461,9 @@ function _closeNoteReader() {
     const list = document.getElementById('notes-list');
     if (list) list.style.display = 'block';
     if (activeTab === 'notes') _renderNotesList();
+    // Restaurar hint del footer
+    const footer = document.getElementById('inv-footer');
+    if (footer) footer.textContent = '[ TAB ] CERRAR';
 }
 
 // ── Pickup notif ──────────────────────────────────────────────────────────────

@@ -7,11 +7,13 @@ let _visible = false;
 let _onContinue = null;
 let _onRestart = null;
 let _onMainMenu = null;
+let _onSave = null;
 
-export function initPauseUI({ onContinue, onRestart, onMainMenu }) {
+export function initPauseUI({ onContinue, onRestart, onMainMenu, onSave }) {
     _onContinue  = onContinue;
     _onRestart   = onRestart;
     _onMainMenu  = onMainMenu;
+    _onSave      = onSave ?? null;
 
     const html = `
     <style>
@@ -196,6 +198,7 @@ export function initPauseUI({ onContinue, onRestart, onMainMenu }) {
 
             <div class="pause-menu">
                 <button class="pause-btn" id="pauseContinue">Continuar</button>
+                <button class="pause-btn" id="pauseSave">Guardar partida</button>
                 <button class="pause-btn" id="pauseRestart">Reiniciar</button>
                 <button class="pause-btn danger" id="pauseMainMenu">Menú principal</button>
             </div>
@@ -222,7 +225,7 @@ export function initPauseUI({ onContinue, onRestart, onMainMenu }) {
                 </div>
             </div>
 
-            <div class="pause-hint">[ P ] o [ ESC ] para continuar</div>
+            <div class="pause-hint">[ P ] o [ ESC ] continuar  ·  [ G ] guardar</div>
         </div>
     </div>`;
 
@@ -231,9 +234,17 @@ export function initPauseUI({ onContinue, onRestart, onMainMenu }) {
     // Botones
     document.getElementById('pauseContinue').addEventListener('click', (e) => {
         hidePause();
-        // Dar foco al canvas para que el siguiente click reactive el pointer lock
         const canvas = document.querySelector('canvas');
         if (canvas) setTimeout(() => canvas.focus(), 50);
+    });
+    document.getElementById('pauseSave').addEventListener('click', () => {
+        if (_onSave) {
+            const ok = _onSave();
+            // Feedback visual en el botón
+            const btn = document.getElementById('pauseSave');
+            btn.textContent = ok ? '✓ Guardado' : '✗ No disponible';
+            setTimeout(() => { btn.textContent = 'Guardar partida'; }, 2000);
+        }
     });
     document.getElementById('pauseRestart').addEventListener('click', () => {
         hidePause();

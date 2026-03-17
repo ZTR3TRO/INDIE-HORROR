@@ -16,7 +16,25 @@ export let uvLampMesh          = null;   // pickup lámpara UV
 export let uvBloodMark         = null;   // marca "4" en el baño (solo visible con UV)
 
 export let doors = [];
-const loader = new GLTFLoader();
+// LoadingManager compartido — reporta progreso real de todos los assets
+let _onProgress = null;
+let _onAllLoaded = null;
+
+export function setLoadingCallbacks(onProgress, onAllLoaded) {
+    _onProgress  = onProgress;
+    _onAllLoaded = onAllLoaded;
+}
+
+const manager = new THREE.LoadingManager(
+    // onLoad — todos los assets terminaron
+    () => { _onAllLoaded?.(); },
+    // onProgress — un asset avanzó
+    (url, loaded, total) => { _onProgress?.(loaded / total, url); },
+    // onError
+    (url) => { console.warn('Error cargando:', url); }
+);
+
+const loader = new GLTFLoader(manager);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COLLIDERS AUTOMÁTICOS
@@ -373,8 +391,7 @@ function loadHouse() {
                 child.userData.isOpen   = false;
                 child.userData.isDoor   = true;
 
-                // Marcar con flags semánticos en vez de depender del nombre exacto.
-                // Así main.js no se rompe si el GLB exporta 'Garage_Door.001', etc.
+                // Flags semánticos — inmunes a variaciones del nombre GLB
                 const lower = child.name.toLowerCase();
                 child.userData.isGarageDoor  = lower.includes('garage_door') && !lower.includes('008') && !lower.includes('_08');
                 child.userData.isGarage2Door = lower.includes('door_008') || lower.includes('door_08');

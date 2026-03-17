@@ -129,8 +129,10 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
                 }
             });
             setGameState('ENDING_WAKE');
-            // El movimiento del ending usa endingKeys (definido en main.js)
-            // que funciona sin necesitar pointer lock
+            // requestPointerLock() directamente en el canvas — funciona desde setTimeout
+            // en Electron sin necesitar interacción del usuario.
+            const canvas = document.querySelector('canvas');
+            if (canvas) canvas.requestPointerLock();
             ui.showSubtitle('[ Usa WASD para moverte ]', 4000);
         }, blackoutTime + 2000);
 
@@ -169,7 +171,9 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         setTimeout(() => {
             setGameState('ENDING_OUTSIDE');
             ui.setMission("Ve a la puerta principal");
-            // endingKeys maneja WASD sin pointer lock
+            // Asegurar pointer lock para la fase final
+            const canvas = document.querySelector('canvas');
+            if (canvas && !document.pointerLockElement) canvas.requestPointerLock();
         }, blackoutTime + 20000);
     });
 }

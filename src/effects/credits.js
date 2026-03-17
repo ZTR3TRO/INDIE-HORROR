@@ -309,7 +309,7 @@ export function showCredits(existingBlackDiv = null) {
                     .fin-line { height:1px;background:linear-gradient(90deg,transparent,rgba(80,160,70,0.6),transparent);animation:line-expand 1.5s ease forwards;animation-delay:1.8s;width:0;opacity:0; }
                 </style>
                 <div class="fin-wrap">
-                    <div class="fin-subtitle">La Congregación del Séptimo Umbral</div>
+                    <div class="fin-subtitle">NIGHTFALL</div>
                     <div class="fin-text">FIN</div>
                     <div class="fin-line"></div>
                 </div>

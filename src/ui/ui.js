@@ -260,10 +260,10 @@ export const ui = {
         }
 
         container.classList.add('visible');
-        if (container._timeout) clearTimeout(container._timeout);
-        container._timeout = setTimeout(() => {
-            container.classList.remove('visible');
-        }, duration);
+
+        // Guardar cuántos ms le quedan — lo descuenta updateSubtitle(delta)
+        // desde el game loop, así se congela automáticamente al pausar.
+        container._subtitleMs = duration;
     },
 
     showCall(visible) {
@@ -315,5 +315,19 @@ export const ui = {
         else       { laptopUI.style.display = 'none';  document.body.requestPointerLock(); }
     },
 };
+
+// Llamar desde el game loop con delta en segundos.
+// Gestiona el tiempo restante del subtítulo sin setTimeout.
+export function updateSubtitle(delta) {
+    const container = document.getElementById('subtitle-container');
+    if (!container || !container.classList.contains('visible')) return;
+    if (container._subtitleMs == null) return;
+
+    container._subtitleMs -= delta * 1000;
+    if (container._subtitleMs <= 0) {
+        container._subtitleMs = null;
+        container.classList.remove('visible');
+    }
+}
 
 export function initUI() { ui.init(); }

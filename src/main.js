@@ -6,22 +6,28 @@ import { initLights, flashlight, explosionLight, ambientLight } from './scenes/l
 import { initLevel, phoneMesh, pickupPhone, getHoveredDoor, toggleDoor, batteries, keyMesh, collidableObjects, fuseboxMesh, houseLights, streetLights, laptopMesh, laptopWorldPosition, bookWorldPosition, keyWorldPosition, uvLampMesh, loadUVLamp, loadUVBloodMark, setUVMarkVisible, collectableNotes, loadCollectableNotes, setCollectableNotesVisible, doors } from './scenes/level.js';
 import { initInventoryUI, toggleInventory, inventoryCollect, inventorySetBatteries, inventorySetFlashlightMode, inventoryHasItem, showInventoryBriefly, collectNote, isInventoryOpen, closeInventory } from './ui/inventoryUI.js';
 import { updatePlayer, debugInfo, moveWithCollision, getWall, getFloor, getGroundY } from './core/player.js'; 
-import { initUI, ui } from './ui/ui.js';            
+import { initUI, ui, updateSubtitle } from './ui/ui.js';            
 import { initLaptop, toggleLaptopUI } from './ui/laptopUI.js'; 
 import { initNumpad, toggleNumpadUI } from './ui/numpadUI.js'; 
 import { initBook, toggleBookUI } from './ui/bookUI.js'; 
 import { initStoneUI, showStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, createExplosionEffect, animateExplosion } from './effects/particles.js';
-import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
-import { DIALOGUES, playDialogueSequence } from './data/dialogues.js';
+import { initAudio, playSound, stopSound, updateRainVolume, sounds } from './core/audio.js';
+import { DIALOGUES, playDialogueSequence, updateDialogues, stopDialogues } from './data/dialogues.js';
 import { initShadow, updateShadow, triggerScreamer, initDistantShadows, updateDistantShadows, dismissShadow, showShadow, startGarageApproach, stopGarageApproach, startAmbientShadows, updateAmbientShadows, debugSpawnNearestAmbient } from './effects/screamer.js';
 import { showCredits } from './effects/credits.js';
 import { showSplash } from './effects/splash.js';
 import { initFuseboxUI, toggleFuseboxUI, insertFuseInSlot } from './ui/fuseboxui.js';
+import { initPauseUI, showPause, hidePause, isPaused } from './ui/pauseUI.js';
 import { initEnding } from './scenes/ending.js';
 
 initWorld(); 
-initLights(); 
+initLights();
+// Flag global para que Electron sepa cuándo re-capturar el pointer lock
+window._gameNeedsPointerLock = false;
+document.addEventListener('pointerlockchange', () => {
+    window._gameNeedsPointerLock = !!document.pointerLockElement;
+}); 
 initLevel(); 
 initUI(); 
 initLaptop(); 
@@ -56,6 +62,17 @@ loadCollectableNotes();
 initShadow();
 initDistantShadows();
 initFuseboxUI();
+initPauseUI({
+    onContinue: () => {
+        // pauseUI.js ya reanudó los sonidos correctos en resumeAllSounds()
+        // NO tocar aquí — de lo contrario jumpscare, telefono y one-shots se
+        // dispararían al despausar aunque no corresponda.
+        clock.getDelta(); // descartar delta acumulado durante la pausa
+        setTimeout(() => controls.lock(), 10);
+    },
+    onRestart:  () => location.reload(),
+    onMainMenu: () => location.reload(),
+});
 
 initStoneUI(() => {
     ui.showSubtitle("Zare: '...¿Qué significa este número?'", 3000);
@@ -177,6 +194,12 @@ function animate() {
     requestAnimationFrame(animate);
     const delta = Math.min(clock.getDelta(), 0.05);
 
+    // Congelar lógica del juego mientras está pausado
+    if (isPaused()) {
+        renderer.render(scene, camera);
+        return;
+    }
+
     animateRain();
     animateExplosion(delta);
     updateShadow(delta);
@@ -185,6 +208,8 @@ function animate() {
     if (scene.userData.endingUpdate) scene.userData.endingUpdate(delta);
 
     updateRainVolume(camera.position.x > CONFIG.ENV.NO_RAIN_BOX.MIN.x && camera.position.x < CONFIG.ENV.NO_RAIN_BOX.MAX.x);
+    updateDialogues(delta);  // avanza SOLO cuando el loop está activo (no pausado)
+    updateSubtitle(delta);   // oculta el subtítulo usando delta — se congela al pausar
 
     // Fondo animado del menú — paneo lento y atmosférico
     if (gameState === 'START') {
@@ -247,7 +272,7 @@ function animate() {
     }
 
     if ((gameState === 'PHONE_RINGING' || gameState === 'IN_CALL' || gameState === 'GAMEPLAY')) {
-        if (controls.isLocked && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !isFuseboxOpen && !transformControls.dragging) updatePlayer(delta, input);
+        if ((controls.isLocked || input.keys.flyMode) && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !isFuseboxOpen && !isPaused() && !transformControls.dragging) updatePlayer(delta, input);
         if ((gameState === 'PHONE_RINGING' || (phoneMesh && phoneMesh.userData.isRingingAgain)) && phoneMesh && phoneMesh.visible) {
             phoneMesh.rotation.z = Math.sin(Date.now() * 0.02) * 0.1;
         }
@@ -676,11 +701,12 @@ input.actions.onInteract = () => {
             const dist = camera.position.distanceTo(door.position);
             if (dist > 2.5) return;
             
-            const isGarageDoor  = door.name === 'Garage_Door';
-            const isGarage2Door = door.name.includes("Door_008") || door.name.includes("Door_08");
-            const isMainDoor    = door.name === "Door";
-            const isClosetDoor  = door.name === "Door_002"; // closet 2do piso — confirmado con KeyD
-            const isHallwayDoor = door.name === "Door_001"; // puerta del pasillo 2do piso
+            // Usar flags semánticos seteados en level.js — inmunes a variaciones del nombre GLB
+            const isGarageDoor  = !!door.userData.isGarageDoor;
+            const isGarage2Door = !!door.userData.isGarage2Door;
+            const isMainDoor    = !!door.userData.isMainDoor;
+            const isClosetDoor  = !!door.userData.isClosetDoor;
+            const isHallwayDoor = !!door.userData.isHallwayDoor;
 
 
             if (isMainDoor) {
@@ -700,15 +726,17 @@ input.actions.onInteract = () => {
                 }
             }
 
-            if ((isGarageDoor || isGarage2Door) && !door.userData.isOpen) {
-                if (!hasKey && isGarageDoor) { 
+            // Door_008 = puerta del garaje interior — requiere llave
+            // Garage_Door = puerta de los carros — se abre libre
+            if (isGarage2Door && !door.userData.isOpen) {
+                if (!hasKey) { 
                     playSound('puerta_bloqueada'); 
                     ui.showSubtitle("Zare: 'Maldición, tiene candado... necesito buscar la llave.'", 4000); 
                     setTimeout(() => {
                         ui.setMission("Buscar la llave del garaje");
                     }, 4000);
                     return; 
-                } else if (isGarageDoor) { 
+                } else { 
                     ui.showSubtitle("Abriendo con la llave...", 2000);
                 }
             }
@@ -781,7 +809,24 @@ function triggerExplosion() {
 document.addEventListener('keydown', (e) => {
     const key = e.key.toLowerCase();
 
+    // Tecla P — toggle pausa durante GAMEPLAY
+    const pauseableStates = ['GAMEPLAY', 'IN_CALL', 'ENDING_CINEMATIC', 'ENDING_WAKE', 'ENDING_OUTSIDE'];
+    if (e.code === 'KeyP' && pauseableStates.includes(gameState) && !isLaptopOpen && !isNumpadOpen && !isBookOpen && !isStoneOpen && !isFuseboxOpen) {
+        if (isPaused()) {
+            hidePause();
+        } else {
+            controls.unlock();
+            showPause();
+        }
+        return;
+    }
+
     if (key === 'q' || e.key === 'Escape') {
+        // ESC cierra la pausa si está abierta
+        if (isPaused()) {
+            hidePause();
+            return;
+        }
         if (isInventoryOpen()) {
             closeInventory();
             setTimeout(() => { controls.lock(); }, 10);
@@ -890,7 +935,7 @@ document.addEventListener('fuseboxActivate', () => {
     }, 15000);
 });
 
-// Slot de fusible llenado desde el modal
+// Pausa — detectar cuando el pointer lock se suelta durante GAMEPLAY
 document.addEventListener('fuseSlotFilled', () => {
     // No hace falta cambiar batteriesCollected — ya los tiene recolectados
     // Solo actualizamos el dataset para que los clicks siguientes sepan cuántos quedan

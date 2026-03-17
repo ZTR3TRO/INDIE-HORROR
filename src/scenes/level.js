@@ -370,8 +370,18 @@ function loadHouse() {
             }
 
             if (child.name.includes('Door') && !n.includes('frame')) {
-                child.userData.isOpen = false;
-                child.userData.isDoor = true;
+                child.userData.isOpen   = false;
+                child.userData.isDoor   = true;
+
+                // Marcar con flags semánticos en vez de depender del nombre exacto.
+                // Así main.js no se rompe si el GLB exporta 'Garage_Door.001', etc.
+                const lower = child.name.toLowerCase();
+                child.userData.isGarageDoor  = lower.includes('garage_door') && !lower.includes('008') && !lower.includes('_08');
+                child.userData.isGarage2Door = lower.includes('door_008') || lower.includes('door_08');
+                child.userData.isMainDoor    = child.name === 'Door';
+                child.userData.isClosetDoor  = child.name === 'Door_002';
+                child.userData.isHallwayDoor = child.name === 'Door_001';
+
                 doors.push(child);
             }
 

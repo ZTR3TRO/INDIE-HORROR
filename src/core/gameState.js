@@ -50,6 +50,9 @@ export const GS = {
     isStoneOpen:    false,
     isFuseboxOpen:  false,
 
+    // ── Coleccionables ────────────────────────────────────────────────────────
+    fugglers: [],   // ids de fugglers recogidos: ['fuggler_1', 'fuggler_2', ...]
+
     // ── Teclas del ending (independientes del PointerLock) ──────────────────
     endingKeys: { forward: false, backward: false, left: false, right: false },
 };

@@ -25,9 +25,13 @@ import { showStoneUI } from '../ui/stoneUI.js';
 import { toggleFuseboxUI } from '../ui/fuseboxui.js';
 import { triggerScreamer, dismissShadow } from '../effects/screamer.js';
 import { GS } from '../core/gameState.js';
-// autosave inyectado desde main.js
+import { tryCollectFuggler, getNearFuggler } from '../scenes/fugglers.js';
+// autosave y registerClue inyectados desde main.js
 let _autosave = null;
 export function setAutosave(fn) { _autosave = fn; }
+
+let _registerClue = null;
+export function setRegisterClue(fn) { _registerClue = fn; }
 
 // Raycaster compartido para detección de objetos interactuables
 const interactRay    = new THREE.Raycaster();
@@ -92,6 +96,9 @@ function handleEndingOutside() {
 }
 
 function handleGameplay() {
+    // 🧸 FUGGLERS — coleccionables
+    if (tryCollectFuggler(ui)) return;
+
     // 🔑 LLAVE
     if (!GS.hasKey && keyMesh && keyMesh.visible) {
         const distToKey = camera.position.distanceTo(keyWorldPosition);
@@ -256,6 +263,8 @@ function handleGameplay() {
             GS.isStoneOpen = true;
             controls.unlock();
             showStoneUI();
+            // Registrar al abrir — no requiere girar al ángulo exacto
+            _registerClue?.('clueStone');
         } else {
             const msgs = ["Zare: 'Solo una piedra...'", "Zare: 'Esta no es...'", "Zare: 'No, esta no tiene nada.'"];
             ui.showSubtitle(msgs[Math.floor(Math.random() * msgs.length)], 2000);
@@ -327,11 +336,11 @@ function handleGameplay() {
                 playSound('puerta_bloqueada');
                 if (!GS.isNumpadOpen) {
                     GS.isNumpadOpen = true;
-                    // Solo mostrar "Introduce el código" si ya tiene todas las pistas
+                    // Si ya tiene todas las pistas, decirle el código directamente
                     if (GS.cluesFound >= 4) {
                         ui.setMission('Introduce el código para salir');
                     } else {
-                        ui.setMission('Busca las pistas del código');
+                        ui.setMission(`Busca las pistas del código (${GS.cluesFound}/4)`);
                     }
                     controls.unlock();
                     toggleNumpadUI(true);

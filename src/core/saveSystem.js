@@ -56,6 +56,7 @@ export function saveGame() {
             clueStone:           GS.clueStone,
             clueUV:              GS.clueUV,
             shadowsDismissed:    [...GS.shadowsDismissed],
+            fugglers:            [...(GS.fugglers ?? [])],
         },
 
         // Posición y rotación de la cámara
@@ -99,10 +100,10 @@ export function saveGame() {
 
 function _getActiveMission() {
     // Espejo exacto del flujo de interaction.js
-    if (GS.finalCallAnswered && GS.cluesFound >= 4) return 'Regresa a la puerta principal';
-    if (GS.finalCallAnswered)          return 'Escapa por la puerta principal';
-    if (GS.fuseboxUsed && GS.cluesFound >= 4) return 'Regresa a la puerta principal';
-    if (GS.fuseboxUsed)                return 'Introduce el código para salir';
+    if (GS.numpadDialogShown && GS.cluesFound >= 4)         return 'Introduce el código para salir';
+    if (GS.numpadDialogShown)                               return `Busca las pistas del código (${GS.cluesFound}/4)`;
+    if (GS.finalCallAnswered && GS.cluesFound >= 4)         return 'Regresa a la puerta principal';
+    if (GS.finalCallAnswered)                               return 'Escapa por la puerta principal';
     if (GS.batteriesCollected === 3)   return 'Regresa a la caja de fusibles';
     if (GS.batteriesCollected > 0)     return `Buscar los fusibles (${GS.batteriesCollected}/3)`;
     // hasKey pero no ha abierto el garaje todavía — no sabemos si abrió la puerta,
@@ -240,6 +241,16 @@ export function loadGame() {
                 }
                 // Agregar al inventario
                 collectNote(saved.id, saved.title, saved.foundAt, saved.body);
+            });
+        }
+
+        // Restaurar fugglers recogidos — ocultar sus meshes
+        if (data.gs.fugglers?.length) {
+            import('../scenes/fugglers.js').then(({ fugglers }) => {
+                data.gs.fugglers.forEach(id => {
+                    const f = fugglers.find(x => x.id === id);
+                    if (f) { f.mesh.visible = false; f.collected = true; }
+                });
             });
         }
 

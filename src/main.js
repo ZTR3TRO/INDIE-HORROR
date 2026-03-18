@@ -26,8 +26,9 @@ import { initEnding } from './scenes/ending.js';
 import { setUVMarkVisible, setCollectableNotesVisible } from './scenes/level.js';
 import { GS } from './core/gameState.js';
 import { updateStateMachine, setAutosave as smSetAutosave, setRegisterClue as smSetRegisterClue } from './core/stateMachine.js';
-import { onInteract, setAutosave as intSetAutosave } from './core/interaction.js';
-import { initDebugTools } from './utils/debug.js';
+import { onInteract, setAutosave as intSetAutosave, setRegisterClue as intSetRegisterClue } from './core/interaction.js';
+import { initDebugTools, isDebugEditorActive } from './utils/debug.js';
+import { loadFugglers, setOnAllFugglersCollected } from './scenes/fugglers.js';
 import { initLoadingScreen, setLoadingProgress, hideLoadingScreen } from './ui/loadingScreen.js';
 import { setLoadingCallbacks } from './scenes/level.js';
 import { saveGame, loadGame, hasSave, deleteSave, getSaveTimestamp } from './core/saveSystem.js';
@@ -53,50 +54,57 @@ window._gameNeedsPointerLock = false;
 // y reintentamos automáticamente tras el cooldown.
 
 let _lockRetryTimer = null;
+let _lockRetryCount = 0;
+const MAX_RETRIES = 3; // máximo de reintentos automáticos antes de esperar click del usuario
 
 function _shouldHaveLock() {
     if (isPaused()) return false;
+    if (isInventoryOpen()) return false;
+    if (typeof isDebugEditorActive === 'function' && isDebugEditorActive()) return false;
     const s  = GS.state;
     const ui = GS.isLaptopOpen || GS.isNumpadOpen || GS.isBookOpen || GS.isStoneOpen || GS.isFuseboxOpen;
     if (ui) return false;
+    // Solo intentar lock en estados jugables — nunca en menú o cinemáticas de inicio
     return s === 'PHONE_RINGING' || s === 'IN_CALL'     || s === 'GAMEPLAY'
         || s === 'ENDING_WAKE'   || s === 'ENDING_OUTSIDE' || s === 'ENDING_CINEMATIC';
 }
 
 function _tryLock() {
-    if (document.pointerLockElement) return; // ya tenemos el lock
+    if (document.pointerLockElement) return;
     if (!_shouldHaveLock()) return;
     try { renderer.domElement.requestPointerLock(); } catch(e) {}
 }
 
-// Cuando el lock se suelta, esperar 1.1s (por encima del cooldown del browser)
-// y reintentarlo automáticamente si el juego lo necesita.
 document.addEventListener('pointerlockchange', () => {
     window._gameNeedsPointerLock = !!document.pointerLockElement;
 
     if (!document.pointerLockElement) {
-        // Lock perdido — programar reintento automático
+        // Lock perdido — programar un único reintento tras el cooldown del browser
         clearTimeout(_lockRetryTimer);
-        _lockRetryTimer = setTimeout(() => {
-            _tryLock();
-            // Si falla (pointerlockerror), el error handler programa otro intento
-        }, 1100);
+        _lockRetryCount = 0;
+        _lockRetryTimer = setTimeout(_tryLock, 1100);
     } else {
-        // Lock recuperado — cancelar cualquier reintento pendiente
+        // Lock recuperado — resetear contador
         clearTimeout(_lockRetryTimer);
+        _lockRetryCount = 0;
     }
 });
 
-// Si el reintento automático falla, esperar otro segundo y volver a intentar
+// Si falla, reintentar máximo MAX_RETRIES veces — luego esperar click del usuario
+// Esto evita el loop infinito de errores en la consola
 document.addEventListener('pointerlockerror', () => {
     clearTimeout(_lockRetryTimer);
-    if (_shouldHaveLock()) {
+    if (_shouldHaveLock() && _lockRetryCount < MAX_RETRIES) {
+        _lockRetryCount++;
         _lockRetryTimer = setTimeout(_tryLock, 1000);
+    } else {
+        _lockRetryCount = 0; // reset — el siguiente click del usuario reintentará
     }
 });
 
-// Click en el canvas — útil si el usuario quiere recuperar el control manualmente
+// Click en el canvas — recuperar lock manualmente (resetea el contador)
 renderer.domElement.addEventListener('click', () => {
+    _lockRetryCount = 0;
     clearTimeout(_lockRetryTimer);
     _tryLock();
 });
@@ -168,6 +176,7 @@ setTimeout(() => {
 createRain();
 initInventoryUI();
 loadUVLamp();
+loadFugglers();
 loadUVBloodMark();
 loadCollectableNotes();
 initShadow();
@@ -185,7 +194,7 @@ initPauseUI({
 
 initStoneUI(() => {
     ui.showSubtitle("Zare: '...¿Qué significa este número?'", 3000);
-    _registerClue('clueStone');
+    // clueStone ya se registra en interaction.js al abrir la piedra
 });
 
 const input = new InputManager();
@@ -221,6 +230,13 @@ export function autosave(label = '') {
 smSetAutosave(autosave);
 intSetAutosave(autosave);
 smSetRegisterClue(_registerClue);
+intSetRegisterClue(_registerClue);
+
+// Callback cuando se recogen todos los fugglers
+setOnAllFugglersCollected(() => {
+    console.log('%c🧸 ¡LOGRO DESBLOQUEADO: Coleccionista de Fugglers!', 'color:#ffcc44;font-weight:bold;font-size:14px;');
+    // TODO: aquí irá el sistema de logros
+});
 
 // G — guardar manualmente durante el gameplay
 document.addEventListener('keydown', (e) => {
@@ -283,8 +299,13 @@ input.actions.onInteract = onInteract;
 input.actions.onInventory = () => {
     if (isInventoryOpen() && isNoteReaderOpen()) { goBackFromNote(); return; }
     toggleInventory();
-    if (isInventoryOpen()) controls.unlock();
-    else setTimeout(() => { controls.lock(); }, 10);
+    if (isInventoryOpen()) {
+        // Cancelar cualquier reintento pendiente antes de soltar el lock
+        clearTimeout(_lockRetryTimer);
+        controls.unlock();
+    } else {
+        setTimeout(() => { controls.lock(); }, 10);
+    }
 };
 
 input.actions.onFlashlight = () => {
@@ -337,7 +358,7 @@ document.addEventListener('keydown', (e) => {
     // Q / ESC — cerrar interfaces
     if (key === 'q' || e.key === 'Escape') {
         if (isPaused()) { hidePause(); return; }
-        if (isInventoryOpen()) { closeInventory(); setTimeout(() => controls.lock(), 10); }
+        if (isInventoryOpen()) { closeInventory(); clearTimeout(_lockRetryTimer); setTimeout(() => controls.lock(), 10); }
         if (GS.isLaptopOpen)  { toggleLaptopUI(false); GS.isLaptopOpen = false; _registerClue('clueLaptop'); setTimeout(() => controls.lock(), 10); }
         if (GS.isNumpadOpen) {
             toggleNumpadUI(false); GS.isNumpadOpen = false;
@@ -347,10 +368,11 @@ document.addEventListener('keydown', (e) => {
                 setTimeout(() => {
                     ui.showSubtitle("Zare: '¡¿Un candado digital?! Daniel no instaló esto...'", 4000);
                     setTimeout(() => {
+                        // Mostrar contador si no tiene todas las pistas aún
                         if (GS.cluesFound >= 4) {
                             ui.setMission('Introduce el código para salir');
                         } else {
-                            ui.setMission('Busca las pistas del código');
+                            ui.setMission(`Busca las pistas del código (${GS.cluesFound}/4)`);
                         }
                     }, 4000);
                 }, 300);
@@ -476,13 +498,18 @@ function _registerClue(key) {
     if (GS[key]) return; // ya la había encontrado
     GS[key] = true;
     GS.cluesFound++;
-    if (GS.cluesFound >= 4) {
-        // Tiene todas las pistas — actualizar misión según dónde está en el juego
-        if (GS.isNumpadOpen || GS.numpadDialogShown) {
+
+    // Si el numpad ya fue descubierto, mostrar contador de pistas
+    if (GS.numpadDialogShown) {
+        if (GS.cluesFound >= 4) {
             ui.setMission('Introduce el código para salir');
-        } else if (GS.finalCallAnswered) {
-            ui.setMission('Regresa a la puerta principal');
+            autosave('Código completo');
+        } else {
+            ui.setMission(`Busca las pistas del código (${GS.cluesFound}/4)`);
         }
+    } else if (GS.cluesFound >= 4 && GS.finalCallAnswered) {
+        // Tiene todo pero aún no llegó al numpad — guiarlo a la puerta
+        ui.setMission('Regresa a la puerta principal');
         autosave('Código completo');
     }
 }

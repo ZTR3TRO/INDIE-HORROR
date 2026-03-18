@@ -10,6 +10,7 @@ import { CONFIG } from '../data/config.js';
 import { DIALOGUES } from '../data/dialogues.js';
 import { playSound, stopSound } from '../core/audio.js';
 import { phoneMesh, getHoveredDoor, houseLights, streetLights, collectableNotes, uvBloodMark } from '../scenes/level.js';
+import { updateFugglers, getNearFuggler } from '../scenes/fugglers.js';
 import { flashlight, explosionLight, ambientLight } from '../scenes/lights.js';
 import { moveWithCollision, getWall, getFloor, getGroundY, updatePlayer } from '../core/player.js';
 import { ui } from '../ui/ui.js';
@@ -185,6 +186,20 @@ function stateGameplay(delta) {
             if (camDir.dot(toMark) > 0.4) {
                 _registerClue?.('clueUV');
             }
+        }
+    }
+
+    // Fugglers — float animation + hint de proximidad
+    updateFugglers(delta);
+    const nearFuggler = getNearFuggler();
+    if (nearFuggler) {
+        ui.showInteract(true, 'RECOGER');
+    } else {
+        // Ocultar hint si ya no hay fuggler cerca y mostraba RECOGER
+        const el    = document.getElementById('interact-msg');
+        const keyEl = document.getElementById('interact-key');
+        if (el?.classList.contains('visible') && keyEl?.textContent.includes('RECOGER')) {
+            ui.showInteract(false);
         }
     }
 

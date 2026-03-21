@@ -129,6 +129,7 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
                 }
             });
             setGameState('ENDING_WAKE');
+            import('../core/achievements.js').then(({unlock}) => unlock('WAKE_UP'));
             // requestPointerLock() directamente en el canvas — funciona desde setTimeout
             // en Electron sin necesitar interacción del usuario.
             const canvas = document.querySelector('canvas');
@@ -170,6 +171,7 @@ export function initEnding({ getGameState, setGameState, getUVMode, setUVMode, i
         // FASE 8 — control al jugador
         setTimeout(() => {
             setGameState('ENDING_OUTSIDE');
+            import('../core/achievements.js').then(({unlock}) => unlock('NIGHTFALL'));
             ui.setMission("Ve a la puerta principal");
             // Asegurar pointer lock para la fase final
             const canvas = document.querySelector('canvas');

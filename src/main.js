@@ -6,7 +6,7 @@
 import * as THREE from 'three';
 import { CONFIG } from './data/config.js';
 import { InputManager } from './core/input.js';
-import { initWorld, scene, camera, renderer, controls, transformControls } from './core/world.js';
+import { initWorld, scene, camera, renderer, controls } from './core/world.js';
 import { initLights, flashlight, explosionLight, ambientLight } from './scenes/lights.js';
 import { initLevel, phoneMesh, houseLights, streetLights, loadUVLamp, loadUVBloodMark, loadCollectableNotes } from './scenes/level.js';
 import { initInventoryUI, toggleInventory, inventorySetFlashlightMode, isInventoryOpen, closeInventory, isNoteReaderOpen, goBackFromNote, showInventoryBriefly } from './ui/inventoryUI.js';
@@ -16,7 +16,7 @@ import { initNumpad, toggleNumpadUI } from './ui/numpadUI.js';
 import { initBook, toggleBookUI } from './ui/bookUI.js';
 import { initStoneUI, hideStoneUI } from './ui/stoneUI.js';
 import { createRain, animateRain, animateExplosion } from './effects/particles.js';
-import { initAudio, playSound, stopSound, updateRainVolume, sounds } from './core/audio.js';
+import { initAudio, playSound, stopSound, updateRainVolume } from './core/audio.js';
 import { updateDialogues } from './data/dialogues.js';
 import { initShadow, updateShadow, initDistantShadows, updateDistantShadows, startAmbientShadows, updateAmbientShadows, showShadow, startGarageApproach, stopGarageApproach, dismissShadow } from './effects/screamer.js';
 import { showSplash } from './effects/splash.js';
@@ -24,14 +24,15 @@ import { initFuseboxUI, toggleFuseboxUI } from './ui/fuseboxui.js';
 import { initPauseUI, showPause, hidePause, isPaused } from './ui/pauseUI.js';
 import { initEnding } from './scenes/ending.js';
 import { setUVMarkVisible, setCollectableNotesVisible } from './scenes/level.js';
-import { GS } from './core/gameState.js';
+import { GS, dismissAndTrack, setDismissShadowFn } from './core/gameState.js';
 import { updateStateMachine, setAutosave as smSetAutosave, setRegisterClue as smSetRegisterClue } from './core/stateMachine.js';
 import { onInteract, setAutosave as intSetAutosave, setRegisterClue as intSetRegisterClue } from './core/interaction.js';
 import { initDebugTools, isDebugEditorActive } from './utils/debug.js';
+import { initAchievements, unlock as unlockAch } from './core/achievements.js';
 import { loadFugglers, setOnAllFugglersCollected } from './scenes/fugglers.js';
 import { initLoadingScreen, setLoadingProgress, hideLoadingScreen } from './ui/loadingScreen.js';
 import { setLoadingCallbacks } from './scenes/level.js';
-import { saveGame, loadGame, hasSave, deleteSave, getSaveTimestamp } from './core/saveSystem.js';
+import { saveGame, loadGame, hasSave, getSaveTimestamp, resetAll } from './core/saveSystem.js';
 
 // ── Inicialización ────────────────────────────────────────────────────────────
 // Ocultar el canvas inmediatamente — el loading screen debe ser lo primero visible
@@ -148,6 +149,7 @@ const menuEl = document.getElementById('menu');
 if (menuEl) menuEl.style.display = 'none';
 
 initUI();
+initAchievements();
 initLaptop();
 initNumpad();
 initBook();
@@ -188,8 +190,8 @@ initPauseUI({
         setTimeout(() => controls.lock(), 10);
     },
     onSave: () => saveGame(),
-    onRestart:  () => location.reload(),
-    onMainMenu: () => location.reload(),
+    onRestart:  () => { resetAll(); location.reload(); },
+    onMainMenu: () => { resetAll(); location.reload(); },
 });
 
 initStoneUI(() => {
@@ -223,6 +225,7 @@ export function autosave(label = '') {
     if (ok) {
         ui.showSubtitle(label ? `Partida guardada — ${label}` : 'Partida guardada', 2000);
         console.log(`%c💾 AUTOSAVE ${label}`, 'color:#88ffcc;font-weight:bold;');
+        unlockAch('SAVER');
     }
 }
 
@@ -231,11 +234,11 @@ smSetAutosave(autosave);
 intSetAutosave(autosave);
 smSetRegisterClue(_registerClue);
 intSetRegisterClue(_registerClue);
+setDismissShadowFn(dismissShadow);
 
 // Callback cuando se recogen todos los fugglers
 setOnAllFugglersCollected(() => {
-    console.log('%c🧸 ¡LOGRO DESBLOQUEADO: Coleccionista de Fugglers!', 'color:#ffcc44;font-weight:bold;font-size:14px;');
-    // TODO: aquí irá el sistema de logros
+    unlockAch('COLLECTOR');
 });
 
 // G — guardar manualmente durante el gameplay
@@ -403,6 +406,7 @@ document.addEventListener('fuseboxActivate', () => {
 
     setTimeout(() => controls.lock(), 10);
     GS.powerRestored = true;
+    unlockAch('POWER_BACK');
     ui.showSubtitle("SISTEMA REINICIADO", 3000);
     playSound('zumbido_electrico');
 
@@ -445,8 +449,8 @@ document.addEventListener('fuseboxActivate', () => {
         stopSound('zumbido_electrico');
         ui.showSubtitle("El sistema colapsó por completo...", 5000);
         stopGarageApproach();
-        _dismissAndTrack('garage');
-        _dismissAndTrack('closet');
+        dismissAndTrack('garage');
+        dismissAndTrack('closet');
         startAmbientShadows();
         setTimeout(() => {
             playSound('telefono');
@@ -484,14 +488,6 @@ if (import.meta.env.DEV) {
     initDebugTools();
 }
 
-// ── Helper para dismissShadow con tracking ───────────────────────────────────
-function _dismissAndTrack(id) {
-    dismissShadow(id);
-    if (!GS.shadowsDismissed.includes(id)) {
-        GS.shadowsDismissed.push(id);
-    }
-}
-
 // ── Sistema de pistas del código ────────────────────────────────────────────
 // Registra que el jugador vio una pista. Cuando tiene las 4, cambia la misión.
 function _registerClue(key) {
@@ -512,6 +508,7 @@ function _registerClue(key) {
         ui.setMission('Regresa a la puerta principal');
         autosave('Código completo');
     }
+    if (GS.cluesFound >= 4) unlockAch('DETECTIVE');
 }
 
 // ── Botón Continuar en el menú ───────────────────────────────────────────────

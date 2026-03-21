@@ -23,8 +23,8 @@ import { toggleNumpadUI } from '../ui/numpadUI.js';
 import { toggleBookUI } from '../ui/bookUI.js';
 import { showStoneUI } from '../ui/stoneUI.js';
 import { toggleFuseboxUI } from '../ui/fuseboxui.js';
-import { triggerScreamer, dismissShadow } from '../effects/screamer.js';
-import { GS } from '../core/gameState.js';
+import { triggerScreamer } from '../effects/screamer.js';
+import { GS, dismissAndTrack } from '../core/gameState.js';
 import { tryCollectFuggler, getNearFuggler } from '../scenes/fugglers.js';
 // autosave y registerClue inyectados desde main.js
 let _autosave = null;
@@ -64,6 +64,7 @@ function handlePhoneRinging() {
         stopSound('pasos');
         pickupPhone();
         GS.state = 'IN_CALL';
+        import('../core/achievements.js').then(({unlock}) => unlock('FIRST_CALL'));
         GS.timer = 0;
         playDialogueSequence(ui, DIALOGUES.CALL_1, () => {
             ui.showCall(false);
@@ -102,7 +103,7 @@ function handleGameplay() {
     // 🔑 LLAVE
     if (!GS.hasKey && keyMesh && keyMesh.visible) {
         const distToKey = camera.position.distanceTo(keyWorldPosition);
-        if (distToKey < 3.0) {
+        if (distToKey < 3.0 && checkLineOfSight(keyWorldPosition)) {
             const camDir = new THREE.Vector3();
             camera.getWorldDirection(camDir);
             const toKey = new THREE.Vector3().subVectors(keyWorldPosition, camera.position).normalize();
@@ -125,7 +126,7 @@ function handleGameplay() {
         if (battPickedUp || !bat.visible || bat.userData.collected) continue;
         const batPos = new THREE.Vector3();
         bat.getWorldPosition(batPos);
-        if (camera.position.distanceTo(batPos) < 3.0) {
+        if (camera.position.distanceTo(batPos) < 3.0 && checkLineOfSight(batPos)) {
             const camDir = new THREE.Vector3();
             camera.getWorldDirection(camDir);
             const toBat = new THREE.Vector3().subVectors(batPos, camera.position).normalize();
@@ -213,6 +214,8 @@ function handleGameplay() {
                 if (camDir.dot(toNote) > 0.45) {
                     note.userData.collected = true;
                     note.visible = false;
+                    const _allNotes = collectableNotes?.every(n => n.userData.collected);
+                    if (_allNotes) import('../core/achievements.js').then(({unlock}) => unlock('ARCHIVIST'));
                     playSound('objeto');
                     collectNote(note.userData.noteId, note.userData.noteTitle,
                                 note.userData.noteFoundAt, note.userData.noteBody);
@@ -365,9 +368,9 @@ function handleGameplay() {
         }
 
         toggleDoor(door);
-        if (isClosetDoor)  setTimeout(() => { dismissShadow('closet');  if (!GS.shadowsDismissed.includes('closet'))  GS.shadowsDismissed.push('closet');  }, 350);
-        if (isHallwayDoor) setTimeout(() => { dismissShadow('hallway'); if (!GS.shadowsDismissed.includes('hallway')) GS.shadowsDismissed.push('hallway'); }, 500);
-        if (isGarage2Door) setTimeout(() => { dismissShadow('patio'); if (!GS.shadowsDismissed.includes('patio')) GS.shadowsDismissed.push('patio'); }, 5000);
+        if (isClosetDoor)  setTimeout(() => dismissAndTrack('closet'),  350);
+        if (isHallwayDoor) setTimeout(() => dismissAndTrack('hallway'), 500);
+        if (isGarage2Door) setTimeout(() => dismissAndTrack('patio'),   5000);
     }
 }
 

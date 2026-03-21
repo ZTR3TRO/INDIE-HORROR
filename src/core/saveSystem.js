@@ -6,7 +6,7 @@
 //          y estado de los objetos de escena (llave, baterías, etc.)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { GS } from './gameState.js';
+import { GS, getActiveMission } from './gameState.js';
 import { camera } from './world.js';
 import {
     keyMesh, batteries, uvLampMesh, doors, collectableNotes, phoneMesh,
@@ -87,7 +87,7 @@ export function saveGame() {
     };
 
     // Inferir misión activa según el estado del juego
-    data.activeMission = _getActiveMission();
+    data.activeMission = getActiveMission();
 
     try {
         localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -98,21 +98,6 @@ export function saveGame() {
     }
 }
 
-function _getActiveMission() {
-    // Espejo exacto del flujo de interaction.js
-    if (GS.numpadDialogShown && GS.cluesFound >= 4)         return 'Introduce el código para salir';
-    if (GS.numpadDialogShown)                               return `Busca las pistas del código (${GS.cluesFound}/4)`;
-    if (GS.finalCallAnswered && GS.cluesFound >= 4)         return 'Regresa a la puerta principal';
-    if (GS.finalCallAnswered)                               return 'Escapa por la puerta principal';
-    if (GS.batteriesCollected === 3)   return 'Regresa a la caja de fusibles';
-    if (GS.batteriesCollected > 0)     return `Buscar los fusibles (${GS.batteriesCollected}/3)`;
-    // hasKey pero no ha abierto el garaje todavía — no sabemos si abrió la puerta,
-    // así que ponemos la misión más conservadora: abre el garaje
-    if (GS.hasKey)                     return 'Abre la puerta del garaje';
-    if (GS.powerOutageAnswered)        return 'Buscar la llave del garaje';
-    if (GS.powerOutageCall)            return 'Ve a la caja de fusibles en el garaje';
-    return '';
-}
 
 // ── ¿Existe save? ─────────────────────────────────────────────────────────────
 
@@ -139,6 +124,11 @@ export function getSaveTimestamp() {
 
 export function deleteSave() {
     localStorage.removeItem(SAVE_KEY);
+}
+
+export function resetAll() {
+    localStorage.removeItem(SAVE_KEY);
+    localStorage.removeItem('nightfall_achievements');
 }
 
 // ── Cargar ────────────────────────────────────────────────────────────────────

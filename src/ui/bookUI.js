@@ -405,6 +405,7 @@ export function toggleBookUI(show) {
     if (show) {
         currentPage = 0;
         renderBookPage(0);
+        bookUI.style.display = ''; // limpia cualquier inline style que haya quedado
         bookUI.classList.add('open');
     } else {
         bookUI.classList.remove('open');

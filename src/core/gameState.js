@@ -56,3 +56,31 @@ export const GS = {
     // ── Teclas del ending (independientes del PointerLock) ──────────────────
     endingKeys: { forward: false, backward: false, left: false, right: false },
 };
+
+// ── Helper: descartar sombra y registrarla en GS ──────────────────────────────
+// Fuente única de verdad — evita que interaction.js y main.js dupliquen la lógica.
+// dismissShadow se inyecta desde main.js para evitar dependencia circular con screamer.js.
+let _dismissShadowFn = null;
+export function setDismissShadowFn(fn) { _dismissShadowFn = fn; }
+
+export function dismissAndTrack(id) {
+    _dismissShadowFn?.(id);
+    if (!GS.shadowsDismissed.includes(id)) {
+        GS.shadowsDismissed.push(id);
+    }
+}
+
+// ── Misión activa inferida desde el estado ────────────────────────────────────
+// Fuente única de verdad para saveSystem y cualquier otro módulo que la necesite.
+export function getActiveMission() {
+    if (GS.numpadDialogShown && GS.cluesFound >= 4)  return 'Introduce el código para salir';
+    if (GS.numpadDialogShown)                         return `Busca las pistas del código (${GS.cluesFound}/4)`;
+    if (GS.finalCallAnswered && GS.cluesFound >= 4)   return 'Regresa a la puerta principal';
+    if (GS.finalCallAnswered)                         return 'Escapa por la puerta principal';
+    if (GS.batteriesCollected === 3)                  return 'Regresa a la caja de fusibles';
+    if (GS.batteriesCollected > 0)                    return `Buscar los fusibles (${GS.batteriesCollected}/3)`;
+    if (GS.hasKey)                                    return 'Abre la puerta del garaje';
+    if (GS.powerOutageAnswered)                       return 'Buscar la llave del garaje';
+    if (GS.powerOutageCall)                           return 'Ve a la caja de fusibles en el garaje';
+    return '';
+}
